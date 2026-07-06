@@ -13,9 +13,9 @@
     <p id="status">Loading data…</p>
   </header>
 
-  <!-- One button per layer. Only the active layer's nodes are shown at a time;
-       app.js builds the buttons from its LAYERS list. -->
-  <nav id="layer-tabs" aria-label="Knowledge base layers"></nav>
+  <!-- One toggle per layer, all on by default. Toggles are additive: several
+       layers can be shown at once. app.js builds them from its LAYERS list. -->
+  <nav id="layer-toggles" aria-label="Show or hide layers"></nav>
 
   <!-- Graph canvas plus an overlaid bucket-color legend. -->
   <div id="graph-wrap">

@@ -38,8 +38,8 @@ header h1 {
   color: #b00020;
 }
 
-/* Layer tab bar: a wrapping row of buttons, one per layer. */
-#layer-tabs {
+/* Layer toggle bar: a wrapping row of on/off toggles, one per layer. */
+#layer-toggles {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -48,7 +48,8 @@ header h1 {
   background: #fff;
 }
 
-.tab {
+/* Base = OFF appearance: outlined and muted. */
+.toggle {
   display: flex;
   flex-direction: column; /* English label over Chinese label */
   align-items: center;
@@ -56,30 +57,30 @@ header h1 {
   padding: 0.35rem 0.7rem;
   border: 1px solid #d0d5dd;
   border-radius: 0.4rem;
-  background: #f7f8fa;
-  color: #333;
+  background: #f2f3f5;
+  color: #9aa0aa;
   cursor: pointer;
   font: inherit;
   line-height: 1.2;
 }
 
-.tab:hover {
-  background: #eef1f5;
+.toggle:hover {
+  background: #e8eaee;
 }
 
-/* The currently shown layer. */
-.tab.active {
+/* ON = the layer is currently shown: filled. */
+.toggle.active {
   background: #8a94a6;
   border-color: #8a94a6;
   color: #fff;
 }
 
-.tab-en {
+.toggle-en {
   font-size: 0.85rem;
   font-weight: 600;
 }
 
-.tab-zh {
+.toggle-zh {
   font-size: 0.7rem;
   opacity: 0.85;
 }

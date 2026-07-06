@@ -1,15 +1,15 @@
-// Finance Knowledge Base — nodes colored by bucket (Step 5).
-// Each node is colored by its `bucket` field on a single-hue blue light->dark
-// sequential (ordinal) ramp that encodes CROSS-LANGUAGE CONCEPTUAL DISTANCE,
-// not risk/correctness — so deliberately NOT green=good/red=bad. One hue means
-// only lightness varies, which is colorblind-safe by construction. Still one
-// layer at a time via the tab bar; no click behavior yet.
+// Finance Knowledge Base — additive layer toggles (Step 4-toggles).
+// Every node is loaded once and laid out once, so positions stay stable. Five
+// toggles (one per layer, all on by default) additively show/hide their layer's
+// nodes. An edge shows only when BOTH its endpoints are visible. Nodes are still
+// colored by bucket; no click behavior yet. Labels are English for now — the
+// language toggle comes next.
 
 // Path is relative to index.html, so this works under GitHub Pages subpaths too.
 const DATA_URL = "data/finance_kb.json";
 
 // Layer value -> bilingual display name, in the spec's order. This is the single
-// place the layer list and order live, so the tabs stay consistent.
+// place the layer list and order live, so the toggles stay consistent.
 const LAYERS = [
   { id: "company_fundamentals", en: "Company & Fundamentals", zh: "个股与基本面" },
   { id: "trading", en: "Trading", zh: "交易" },
@@ -28,8 +28,7 @@ const BUCKET_COLORS = {
 };
 
 // One-line meaning per bucket, shown in the legend. English = current UI
-// language (meta.default_language is "en"); when a language toggle exists later
-// this text should follow it.
+// language (meta.default_language is "en"); a language toggle comes next.
 const BUCKET_MEANINGS = {
   A: "Translates cleanly",
   B: "Same concept, treated differently",
@@ -37,7 +36,10 @@ const BUCKET_MEANINGS = {
 };
 
 let kb = null; // the loaded knowledge base { meta, nodes, edges }
-let cy = null; // the single Cytoscape instance we reuse across layers
+let cy = null; // the single Cytoscape instance holding all nodes
+// Which layers are currently shown. Start with every layer on (all visible).
+const visibleLayers = new Set(LAYERS.map((l) => l.id));
+let nodeLayerById = new Map(); // node id -> layer, for counting visible edges
 
 async function main() {
   const statusEl = document.getElementById("status");
@@ -57,13 +59,17 @@ async function main() {
     return;
   }
 
+  nodeLayerById = new Map(kb.nodes.map((n) => [n.id, n.layer]));
+
   cy = createGraph();
-  buildTabs();
+  loadAllElements();
+  buildToggles();
   buildLegend();
-  showLayer(LAYERS[0].id); // start on the first layer
+  applyVisibility(); // all layers on to start, so nothing is hidden yet
+  updateStatus();
 }
 
-// Create an empty Cytoscape instance; showLayer() fills it per layer.
+// Create an empty Cytoscape instance; loadAllElements() fills it.
 function createGraph() {
   // One style rule per bucket, built from BUCKET_COLORS so colors live in one place.
   const bucketStyles = Object.entries(BUCKET_COLORS).map(([bucket, color]) => ({
@@ -110,19 +116,80 @@ function createGraph() {
   });
 }
 
-// Build the tab bar buttons from LAYERS.
-function buildTabs() {
-  const nav = document.getElementById("layer-tabs");
+// Add every node and edge once, then lay the whole graph out a single time.
+// Keeping one stable layout means toggling a layer never re-scatters the rest.
+function loadAllElements() {
+  const nodeEls = kb.nodes.map((n) => ({
+    data: { id: n.id, label: n.en, bucket: n.bucket, layer: n.layer },
+  }));
+
+  // Guard: only draw edges whose endpoints both exist, else Cytoscape throws.
+  const nodeIds = new Set(kb.nodes.map((n) => n.id));
+  const edgeEls = kb.edges
+    .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
+    .map((e, i) => ({ data: { id: `e${i}`, source: e.source, target: e.target } }));
+
+  cy.add({ nodes: nodeEls, edges: edgeEls });
+  cy
+    .layout({
+      name: "cose",
+      animate: false, // settle instantly
+      randomize: true,
+      fit: true,
+      padding: 40,
+      componentSpacing: 120, // room between the many disconnected nodes
+      idealEdgeLength: 80,
+      nodeOverlap: 24, // extra repulsion so labels overlap less
+    })
+    .run();
+}
+
+// Build the toggle bar from LAYERS; all start on (.active).
+function buildToggles() {
+  const nav = document.getElementById("layer-toggles");
   LAYERS.forEach((layer) => {
     const btn = document.createElement("button");
-    btn.className = "tab";
-    btn.dataset.layer = layer.id; // remember which layer this button selects
-    // Bilingual label: English on top, Chinese below.
+    btn.className = "toggle active"; // active = layer currently shown
+    btn.dataset.layer = layer.id;
+    btn.setAttribute("aria-pressed", "true");
+    // Bilingual display name: English on top, Chinese below.
     btn.innerHTML =
-      `<span class="tab-en">${layer.en}</span>` +
-      `<span class="tab-zh">${layer.zh}</span>`;
-    btn.addEventListener("click", () => showLayer(layer.id));
+      `<span class="toggle-en">${layer.en}</span>` +
+      `<span class="toggle-zh">${layer.zh}</span>`;
+    btn.addEventListener("click", () => toggleLayer(layer.id, btn));
     nav.appendChild(btn);
+  });
+}
+
+// Flip one layer on/off, then refresh what's visible.
+function toggleLayer(layerId, btn) {
+  const nowOn = !visibleLayers.has(layerId);
+  if (nowOn) {
+    visibleLayers.add(layerId);
+  } else {
+    visibleLayers.delete(layerId);
+  }
+  btn.classList.toggle("active", nowOn);
+  btn.setAttribute("aria-pressed", String(nowOn));
+
+  applyVisibility();
+  updateStatus();
+}
+
+// Show/hide elements based on visibleLayers. Nodes follow their own layer; an
+// edge is shown only when BOTH endpoint layers are currently visible.
+function applyVisibility() {
+  cy.batch(() => {
+    cy.nodes().forEach((n) => {
+      const on = visibleLayers.has(n.data("layer"));
+      n.style("display", on ? "element" : "none");
+    });
+    cy.edges().forEach((e) => {
+      const bothOn =
+        visibleLayers.has(e.source().data("layer")) &&
+        visibleLayers.has(e.target().data("layer"));
+      e.style("display", bothOn ? "element" : "none");
+    });
   });
 }
 
@@ -142,50 +209,16 @@ function buildLegend() {
   el.innerHTML = `<div class="legend-title">Cross-language distance</div>${rows}`;
 }
 
-// Render only the given layer's nodes (and the edges among them).
-function showLayer(layerId) {
-  const layer = LAYERS.find((l) => l.id === layerId);
-
-  // Filter to this layer's nodes...
-  const layerNodes = kb.nodes.filter((n) => n.layer === layerId);
-  const idSet = new Set(layerNodes.map((n) => n.id));
-  // ...and keep only edges whose both endpoints are in this layer.
-  const layerEdges = kb.edges.filter(
-    (e) => idSet.has(e.source) && idSet.has(e.target)
-  );
-
-  // Carry `bucket` so the per-bucket style rules can color each node.
-  const nodeEls = layerNodes.map((n) => ({
-    data: { id: n.id, label: n.en, bucket: n.bucket },
-  }));
-  const edgeEls = layerEdges.map((e, i) => ({
-    data: { id: `e${i}`, source: e.source, target: e.target },
-  }));
-
-  // Swap the graph contents, then run the force layout on just this layer.
-  cy.elements().remove();
-  cy.add({ nodes: nodeEls, edges: edgeEls });
-  cy
-    .layout({
-      name: "cose",
-      animate: false, // settle instantly; fast for <= 60 nodes
-      randomize: true,
-      fit: true,
-      padding: 40,
-      componentSpacing: 120, // room between the many disconnected nodes
-      idealEdgeLength: 80,
-      nodeOverlap: 24, // extra repulsion so labels overlap less
-    })
-    .run();
-
-  // Highlight the active tab.
-  document.querySelectorAll("#layer-tabs .tab").forEach((b) => {
-    b.classList.toggle("active", b.dataset.layer === layerId);
-  });
-
-  // Update the status line: which layer + its counts.
+// Status line: how many nodes/edges are currently visible.
+function updateStatus() {
+  const nVisible = kb.nodes.filter((n) => visibleLayers.has(n.layer)).length;
+  const eVisible = kb.edges.filter(
+    (e) =>
+      visibleLayers.has(nodeLayerById.get(e.source)) &&
+      visibleLayers.has(nodeLayerById.get(e.target))
+  ).length;
   document.getElementById("status").textContent =
-    `${layer.en} · ${layer.zh} — ${layerNodes.length} nodes, ${layerEdges.length} edges.`;
+    `${nVisible} nodes, ${eVisible} edges visible.`;
 }
 
 main();
