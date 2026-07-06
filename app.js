@@ -20,15 +20,13 @@ const LAYERS = [
   { id: "macro_policy", en: "Macro & Policy", zh: "宏观与政策" },
 ];
 
-// Bucket -> color, from viridis: a perceptually-uniform, colorblind-safe
-// sequential palette, so the three buckets are easy to tell apart. Ordered by
-// lightness A(dark) -> C(light); the majority bucket A is dark for high contrast
-// on the light surface, and the rare C is bright so it stands out. Still a
-// sequential distance encoding — not green=good/red=bad.
+// Bucket -> color: green (A) / amber (B) / red (C), per preference. Note this is
+// a traffic-light scheme; green vs red is the hardest pair for red-green color
+// vision deficiency, so the shades also differ in lightness as a fallback cue.
 const BUCKET_COLORS = {
-  A: "#440154", // translates cleanly
-  B: "#21908c", // same concept, treated differently
-  C: "#fde725", // no real equivalence
+  A: "#1f9e4d", // translates cleanly (green)
+  B: "#e6a012", // same concept, treated differently (amber)
+  C: "#d63a2f", // no real equivalence (red)
 };
 
 // All translatable UI chrome, keyed by language. status() is a function so the
