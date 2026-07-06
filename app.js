@@ -65,6 +65,13 @@ const LANG_KEY = "fkb-lang"; // sessionStorage key for the remembered language
 const LAYOUT_NAME =
   typeof window.cytoscapeCoseBilkent !== "undefined" ? "cose-bilkent" : "cose";
 
+// Touch devices (coarse pointer, e.g. phones) keep Cytoscape's native pinch-zoom
+// and drag-pan; on mouse devices we disable zoom so a plain wheel can pan instead
+// (with Ctrl+wheel to zoom) — see createGraph() and setupNavigation().
+const IS_TOUCH =
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(pointer: coarse)").matches;
+
 // Shared layout tuning. nodeDimensionsIncludeLabels reserves each node's label
 // box (no overlap); weak gravity + strong repulsion spread nodes wide.
 const LAYOUT_BASE = {
@@ -152,8 +159,9 @@ function createGraph() {
   return cytoscape({
     container: document.getElementById("cy"),
 
-    // Wheel zoom is off: we handle the wheel ourselves so plain scroll pans.
-    userZoomingEnabled: false,
+    // On mouse devices, disable zoom so a plain wheel can pan (Ctrl+wheel zooms,
+    // added in setupNavigation). On touch devices, keep native pinch-zoom.
+    userZoomingEnabled: IS_TOUCH,
 
     style: [
       {
@@ -345,28 +353,34 @@ function centerOnVisible() {
   });
 }
 
-// --- Navigation: mouse wheel pans (Ctrl/Cmd+wheel zooms); arrow keys pan. ---
+// --- Navigation: wheel/pinch + arrow keys; keep the canvas sized to its box. ---
 function setupNavigation() {
   const container = document.getElementById("cy");
 
-  // Plain wheel scrolls (pans) the graph; Ctrl/Cmd+wheel zooms toward the cursor.
-  container.addEventListener(
-    "wheel",
-    (ev) => {
-      ev.preventDefault(); // stop the page from scrolling
-      if (ev.ctrlKey || ev.metaKey) {
-        const factor = Math.exp(-ev.deltaY * 0.001); // gentle zoom
-        cy.zoom({
-          level: cy.zoom() * factor,
-          renderedPosition: { x: ev.offsetX, y: ev.offsetY },
-        });
-      } else {
-        // Move the content opposite the scroll direction (natural scrolling).
-        cy.panBy({ x: -ev.deltaX, y: -ev.deltaY });
-      }
-    },
-    { passive: false }
-  );
+  // Keep the graph sized to its container across window resizes / orientation flips.
+  window.addEventListener("resize", () => cy.resize());
+
+  // Mouse devices only: plain wheel pans, Ctrl/Cmd+wheel zooms toward the cursor.
+  // On touch we leave zoom to Cytoscape's native pinch, so we don't hijack input.
+  if (!IS_TOUCH) {
+    container.addEventListener(
+      "wheel",
+      (ev) => {
+        ev.preventDefault(); // stop the page from scrolling
+        if (ev.ctrlKey || ev.metaKey) {
+          const factor = Math.exp(-ev.deltaY * 0.001); // gentle zoom
+          cy.zoom({
+            level: cy.zoom() * factor,
+            renderedPosition: { x: ev.offsetX, y: ev.offsetY },
+          });
+        } else {
+          // Move the content opposite the scroll direction (natural scrolling).
+          cy.panBy({ x: -ev.deltaX, y: -ev.deltaY });
+        }
+      },
+      { passive: false }
+    );
+  }
 
   // Arrow keys pan. Ignore when typing in the search box.
   document.addEventListener("keydown", (ev) => {
