@@ -20,13 +20,15 @@ const LAYERS = [
   { id: "macro_policy", en: "Macro & Policy", zh: "宏观与政策" },
 ];
 
-// Bucket -> color, from the validated blue ordinal ramp (light A -> dark C).
-// Light = small conceptual distance, dark = large. Contrast on the #fafafa
-// surface: A 2.02:1, B 4.23:1, C 9.50:1 (A clears the 2:1 ordinal floor).
+// Bucket -> color, from viridis: a perceptually-uniform, colorblind-safe
+// sequential palette, so the three buckets are easy to tell apart. Ordered by
+// lightness A(dark) -> C(light); the majority bucket A is dark for high contrast
+// on the light surface, and the rare C is bright so it stands out. Still a
+// sequential distance encoding — not green=good/red=bad.
 const BUCKET_COLORS = {
-  A: "#86b6ef", // translates cleanly
-  B: "#2a78d6", // same concept, treated differently
-  C: "#104281", // no real equivalence
+  A: "#440154", // translates cleanly
+  B: "#21908c", // same concept, treated differently
+  C: "#fde725", // no real equivalence
 };
 
 // All translatable UI chrome, keyed by language. status() is a function so the
@@ -108,10 +110,11 @@ const LAYOUT_BASE = {
 let kb = null; // the loaded knowledge base { meta, nodes, edges }
 let cy = null; // the single Cytoscape instance holding all nodes
 let lang = readLang(); // "en" | "zh"; default English, or the session's choice
-// Which layers are currently shown. Start with every layer on (all visible).
+// Which layers / buckets are currently shown. Start with everything on. A node
+// is visible only when BOTH its layer and its bucket are enabled.
 const visibleLayers = new Set(LAYERS.map((l) => l.id));
-let nodeLayerById = new Map(); // node id -> layer, for counting visible edges
-let nodeById = new Map(); // node id -> full node record, for the detail panel
+const visibleBuckets = new Set(["A", "B", "C"]);
+let nodeById = new Map(); // node id -> full node record (panel + visibility checks)
 // Cache of node positions per visible-state so re-toggling restores the exact
 // prior arrangement. Key = which layers are on; value = Map(nodeId -> {x,y}).
 const posCache = new Map();
@@ -156,12 +159,12 @@ async function main() {
     return;
   }
 
-  nodeLayerById = new Map(kb.nodes.map((n) => [n.id, n.layer]));
   nodeById = new Map(kb.nodes.map((n) => [n.id, n]));
 
   cy = createGraph();
   loadAllElements();
   buildToggles();
+  buildBucketToggles();
   buildLangToggle();
   setupSearch();
   setupNavigation(); // wheel-to-pan / Ctrl+wheel zoom / arrow keys
@@ -194,7 +197,7 @@ function createGraph() {
         style: {
           "background-color": "#8a94a6", // fallback for any node missing a bucket
           "border-width": 1,
-          "border-color": "rgba(0,0,0,0.25)", // thin ring so light (A) nodes still read
+          "border-color": "rgba(0,0,0,0.3)", // thin ring so the light (C) nodes still read
           width: 18,
           height: 18,
           label: "data(label)", // label is swapped between en/zh by applyLanguage
@@ -253,11 +256,18 @@ function loadAllElements() {
   cy.add({ nodes: nodeEls, edges: edgeEls });
 }
 
-// The set of currently-on layers, as a stable cache key.
+// The current visible-state (layers + buckets), as a stable cache key.
 function stateKey() {
-  return LAYERS.filter((l) => visibleLayers.has(l.id))
+  const layers = LAYERS.filter((l) => visibleLayers.has(l.id))
     .map((l) => l.id)
     .join("|");
+  const buckets = ["A", "B", "C"].filter((b) => visibleBuckets.has(b)).join("");
+  return `${layers}#${buckets}`;
+}
+
+// A node is visible only when both its layer and its bucket are enabled.
+function isNodeVisible(data) {
+  return visibleLayers.has(data.layer) && visibleBuckets.has(data.bucket);
 }
 
 // Snapshot positions of a node collection into a Map(id -> {x, y}).
@@ -391,18 +401,58 @@ function toggleLayer(layerId) {
   reflow(); // compact the remaining nodes / restore the prior arrangement
 }
 
-// Show/hide elements based on visibleLayers. Nodes follow their own layer; an
-// edge is shown only when BOTH endpoint layers are currently visible.
+// Build the bucket toggle bar (A / B / C), each with its color dot + meaning.
+function buildBucketToggles() {
+  const nav = document.getElementById("bucket-toggles");
+  ["A", "B", "C"].forEach((b) => {
+    const btn = document.createElement("button");
+    btn.className = "toggle bucket-toggle active";
+    btn.type = "button";
+    btn.dataset.bucket = b;
+    btn.innerHTML =
+      `<span class="bucket-dot" style="background:${BUCKET_COLORS[b]}"></span>` +
+      `<span class="bucket-key">${b}</span>` +
+      `<span class="bucket-meaning"></span>`;
+    btn.addEventListener("click", () => toggleBucket(b));
+    nav.appendChild(btn);
+  });
+  refreshBucketLabels(); // fill meanings + active state in the current language
+}
+
+// Update each bucket toggle's meaning text (language-dependent) and on/off state.
+function refreshBucketLabels() {
+  document.querySelectorAll("#bucket-toggles .bucket-toggle").forEach((btn) => {
+    const b = btn.dataset.bucket;
+    btn.querySelector(".bucket-meaning").textContent = UI_TEXT[lang].bucket[b];
+    const on = visibleBuckets.has(b);
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", String(on));
+  });
+}
+
+// Flip one bucket on/off, refresh visibility, then reflow what's left.
+function toggleBucket(b) {
+  if (visibleBuckets.has(b)) {
+    visibleBuckets.delete(b);
+  } else {
+    visibleBuckets.add(b);
+  }
+  refreshBucketLabels();
+  applyVisibility();
+  updateStatus();
+  reflow();
+}
+
+// Show/hide elements by layer AND bucket. An edge is shown only when both of
+// its endpoints are visible.
 function applyVisibility() {
   cy.batch(() => {
     cy.nodes().forEach((n) => {
-      const on = visibleLayers.has(n.data("layer"));
-      n.style("display", on ? "element" : "none");
+      n.style("display", isNodeVisible(n.data()) ? "element" : "none");
     });
     cy.edges().forEach((e) => {
       const bothOn =
-        visibleLayers.has(e.source().data("layer")) &&
-        visibleLayers.has(e.target().data("layer"));
+        isNodeVisible(e.source().data()) && isNodeVisible(e.target().data());
       e.style("display", bothOn ? "element" : "none");
     });
   });
@@ -708,6 +758,7 @@ function applyLanguage() {
   });
 
   buildLegend(); // legend text is language-dependent
+  refreshBucketLabels(); // bucket toggle meanings are language-dependent
   updateStatus(); // status sentence is language-dependent
 
   if (openNodeId) {
@@ -735,12 +786,12 @@ function buildLegend() {
 
 // Status line: how many nodes/edges are currently visible, in the current language.
 function updateStatus() {
-  const nVisible = kb.nodes.filter((n) => visibleLayers.has(n.layer)).length;
-  const eVisible = kb.edges.filter(
-    (e) =>
-      visibleLayers.has(nodeLayerById.get(e.source)) &&
-      visibleLayers.has(nodeLayerById.get(e.target))
-  ).length;
+  const nVisible = kb.nodes.filter((n) => isNodeVisible(n)).length;
+  const eVisible = kb.edges.filter((e) => {
+    const s = nodeById.get(e.source);
+    const t = nodeById.get(e.target);
+    return s && t && isNodeVisible(s) && isNodeVisible(t);
+  }).length;
   document.getElementById("status").textContent = UI_TEXT[lang].status(
     nVisible,
     eVisible

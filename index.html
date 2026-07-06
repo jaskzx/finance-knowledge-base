@@ -31,6 +31,10 @@
        layers can be shown at once. app.js builds them from its LAYERS list. -->
   <nav id="layer-toggles" aria-label="Show or hide layers"></nav>
 
+  <!-- One toggle per bucket (A/B/C). A node shows only if its layer AND bucket
+       are both on. app.js builds these. -->
+  <nav id="bucket-toggles" aria-label="Show or hide buckets"></nav>
+
   <!-- Graph canvas plus an overlaid bucket-color legend. -->
   <div id="graph-wrap">
     <!-- Cytoscape renders the graph into this element -->

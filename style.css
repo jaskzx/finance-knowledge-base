@@ -86,14 +86,39 @@ header h1 {
   color: #b00020;
 }
 
-/* Layer toggle bar: a wrapping row of on/off toggles, one per layer. */
-#layer-toggles {
+/* Toggle bars: wrapping rows of on/off toggles (layers, and buckets). */
+#layer-toggles,
+#bucket-toggles {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
   padding: 0.6rem 1.25rem;
   border-bottom: 1px solid #e0e0e0;
   background: #fff;
+}
+
+/* Bucket toggle: a color dot + letter + meaning. */
+.bucket-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.bucket-dot {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.bucket-key {
+  font-weight: 700;
+}
+
+.bucket-meaning {
+  font-weight: 400;
+  font-size: 0.8rem;
 }
 
 /* Base = OFF appearance: outlined and muted. Each toggle shows a single-language
