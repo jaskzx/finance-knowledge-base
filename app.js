@@ -1,9 +1,9 @@
-// Finance Knowledge Base — additive layer toggles (Step 4-toggles).
-// Every node is loaded once and laid out once, so positions stay stable. Five
-// toggles (one per layer, all on by default) additively show/hide their layer's
-// nodes. An edge shows only when BOTH its endpoints are visible. Nodes are still
-// colored by bucket; no click behavior yet. Labels are English for now — the
-// language toggle comes next.
+// Finance Knowledge Base — layer toggles + language toggle (Steps 4-5).
+// All nodes are loaded and laid out once (stable positions). Five per-layer
+// toggles additively show/hide layers; toggling re-centers on what's visible.
+// One global EN <-> 中 toggle flips every label and all UI chrome, and the
+// choice is remembered for the session. Nodes are colored by bucket. No node
+// click behavior yet.
 
 // Path is relative to index.html, so this works under GitHub Pages subpaths too.
 const DATA_URL = "data/finance_kb.json";
@@ -27,19 +27,59 @@ const BUCKET_COLORS = {
   C: "#104281", // no real equivalence
 };
 
-// One-line meaning per bucket, shown in the legend. English = current UI
-// language (meta.default_language is "en"); a language toggle comes next.
-const BUCKET_MEANINGS = {
-  A: "Translates cleanly",
-  B: "Same concept, treated differently",
-  C: "No real equivalent",
+// All translatable UI chrome, keyed by language. status() is a function so the
+// visible counts can be spliced into the sentence for each language.
+const UI_TEXT = {
+  en: {
+    title: "Finance Knowledge Base",
+    legendTitle: "Cross-language distance",
+    bucket: {
+      A: "Translates cleanly",
+      B: "Same concept, treated differently",
+      C: "No real equivalent",
+    },
+    status: (n, e) => `${n} nodes, ${e} edges visible.`,
+  },
+  zh: {
+    title: "金融知识库",
+    legendTitle: "跨语言概念距离",
+    bucket: {
+      A: "可直接对应翻译",
+      B: "同一概念，处理方式不同",
+      C: "没有真正对应的概念",
+    },
+    status: (n, e) => `显示 ${n} 个节点，${e} 条连线`,
+  },
 };
+
+const LANG_KEY = "fkb-lang"; // sessionStorage key for the remembered language
 
 let kb = null; // the loaded knowledge base { meta, nodes, edges }
 let cy = null; // the single Cytoscape instance holding all nodes
+let lang = readLang(); // "en" | "zh"; default English, or the session's choice
 // Which layers are currently shown. Start with every layer on (all visible).
 const visibleLayers = new Set(LAYERS.map((l) => l.id));
 let nodeLayerById = new Map(); // node id -> layer, for counting visible edges
+
+// Read the remembered language for this session; default to English. Wrapped
+// because sessionStorage can throw when storage is blocked.
+function readLang() {
+  try {
+    const saved = sessionStorage.getItem(LANG_KEY);
+    if (saved === "en" || saved === "zh") return saved;
+  } catch (e) {
+    /* storage unavailable — fall through to the default */
+  }
+  return "en";
+}
+
+function saveLang(value) {
+  try {
+    sessionStorage.setItem(LANG_KEY, value);
+  } catch (e) {
+    /* storage unavailable — the choice just won't persist */
+  }
+}
 
 async function main() {
   const statusEl = document.getElementById("status");
@@ -64,9 +104,9 @@ async function main() {
   cy = createGraph();
   loadAllElements();
   buildToggles();
-  buildLegend();
+  buildLangToggle();
   applyVisibility(); // all layers on to start, so nothing is hidden yet
-  updateStatus();
+  applyLanguage(); // apply the remembered/default language to labels + all chrome
 }
 
 // Create an empty Cytoscape instance; loadAllElements() fills it.
@@ -89,13 +129,13 @@ function createGraph() {
           "border-color": "rgba(0,0,0,0.25)", // thin ring so light (A) nodes still read
           width: 18,
           height: 18,
-          label: "data(label)",
+          label: "data(label)", // label is swapped between en/zh by applyLanguage
           "font-size": 10,
           color: "#333",
           "text-valign": "bottom",
           "text-halign": "center",
           "text-margin-y": 3,
-          "text-wrap": "wrap", // wrap long English labels...
+          "text-wrap": "wrap", // wrap long labels...
           "text-max-width": "90px", // ...so they don't overlap sideways
           "min-zoomed-font-size": 6, // hide labels only when zoomed far out
         },
@@ -120,7 +160,15 @@ function createGraph() {
 // Keeping one stable layout means toggling a layer never re-scatters the rest.
 function loadAllElements() {
   const nodeEls = kb.nodes.map((n) => ({
-    data: { id: n.id, label: n.en, bucket: n.bucket, layer: n.layer },
+    // Carry both languages so the label can be swapped without a re-layout.
+    data: {
+      id: n.id,
+      label: n.en, // starting label; applyLanguage sets the real one
+      label_en: n.en,
+      label_zh: n.zh,
+      bucket: n.bucket,
+      layer: n.layer,
+    },
   }));
 
   // Guard: only draw edges whose endpoints both exist, else Cytoscape throws.
@@ -144,15 +192,16 @@ function loadAllElements() {
     .run();
 }
 
-// Build the toggle bar from LAYERS; all start on (.active).
+// Build the toggle bar from LAYERS; all start on (.active). Each button holds
+// both language names; CSS shows the one matching the current UI language.
 function buildToggles() {
   const nav = document.getElementById("layer-toggles");
   LAYERS.forEach((layer) => {
     const btn = document.createElement("button");
     btn.className = "toggle active"; // active = layer currently shown
+    btn.type = "button";
     btn.dataset.layer = layer.id;
     btn.setAttribute("aria-pressed", "true");
-    // Bilingual display name: English on top, Chinese below.
     btn.innerHTML =
       `<span class="toggle-en">${layer.en}</span>` +
       `<span class="toggle-zh">${layer.zh}</span>`;
@@ -161,7 +210,7 @@ function buildToggles() {
   });
 }
 
-// Flip one layer on/off, then refresh what's visible.
+// Flip one layer on/off, refresh visibility, then re-center on what's left.
 function toggleLayer(layerId, btn) {
   const nowOn = !visibleLayers.has(layerId);
   if (nowOn) {
@@ -174,6 +223,7 @@ function toggleLayer(layerId, btn) {
 
   applyVisibility();
   updateStatus();
+  centerOnVisible(); // bring the remaining nodes back to the middle
 }
 
 // Show/hide elements based on visibleLayers. Nodes follow their own layer; an
@@ -193,23 +243,78 @@ function applyVisibility() {
   });
 }
 
-// Build the bucket legend from the same color/meaning constants as the nodes.
+// Animate the viewport to fit the currently visible nodes (centers + zooms).
+function centerOnVisible() {
+  const visible = cy.nodes(":visible");
+  if (visible.empty()) return; // nothing to center on
+  cy.animate({
+    fit: { eles: visible, padding: 50 },
+    duration: 300,
+    easing: "ease-in-out",
+  });
+}
+
+// Wire the EN | 中 buttons to switch language.
+function buildLangToggle() {
+  document.querySelectorAll("#lang-toggle .lang-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setLanguage(btn.dataset.lang));
+  });
+}
+
+// Change language, remember it for the session, and re-render everything.
+function setLanguage(next) {
+  if (next !== "en" && next !== "zh") return;
+  lang = next;
+  saveLang(lang);
+  applyLanguage();
+}
+
+// Apply the current language to node labels and all UI chrome.
+function applyLanguage() {
+  const t = UI_TEXT[lang];
+
+  // Root class drives the CSS that picks each toggle's language; lang attr helps a11y.
+  document.body.classList.toggle("lang-zh", lang === "zh");
+  document.body.classList.toggle("lang-en", lang === "en");
+  document.documentElement.lang = lang === "zh" ? "zh" : "en";
+
+  // Page title.
+  document.getElementById("app-title").textContent = t.title;
+
+  // Node labels: swap each to the chosen language's stored value.
+  cy.batch(() => {
+    cy.nodes().forEach((n) =>
+      n.data("label", lang === "zh" ? n.data("label_zh") : n.data("label_en"))
+    );
+  });
+
+  // Mark the active language button.
+  document.querySelectorAll("#lang-toggle .lang-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.lang === lang);
+  });
+
+  buildLegend(); // legend text is language-dependent
+  updateStatus(); // status sentence is language-dependent
+}
+
+// Build the bucket legend in the current language, from the shared constants.
 function buildLegend() {
-  const el = document.getElementById("legend");
+  const t = UI_TEXT[lang];
   const rows = ["A", "B", "C"]
     .map(
       (b) =>
         `<div class="legend-row">` +
         `<span class="legend-swatch" style="background:${BUCKET_COLORS[b]}"></span>` +
         `<span class="legend-key">${b}</span>` +
-        `<span class="legend-meaning">${BUCKET_MEANINGS[b]}</span>` +
+        `<span class="legend-meaning">${t.bucket[b]}</span>` +
         `</div>`
     )
     .join("");
-  el.innerHTML = `<div class="legend-title">Cross-language distance</div>${rows}`;
+  document.getElementById("legend").innerHTML =
+    `<div class="legend-title">${t.legendTitle}</div>${rows}`;
 }
 
-// Status line: how many nodes/edges are currently visible.
+// Status line: how many nodes/edges are currently visible, in the current language.
 function updateStatus() {
   const nVisible = kb.nodes.filter((n) => visibleLayers.has(n.layer)).length;
   const eVisible = kb.edges.filter(
@@ -217,8 +322,10 @@ function updateStatus() {
       visibleLayers.has(nodeLayerById.get(e.source)) &&
       visibleLayers.has(nodeLayerById.get(e.target))
   ).length;
-  document.getElementById("status").textContent =
-    `${nVisible} nodes, ${eVisible} edges visible.`;
+  document.getElementById("status").textContent = UI_TEXT[lang].status(
+    nVisible,
+    eVisible
+  );
 }
 
 main();

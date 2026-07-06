@@ -18,13 +18,48 @@ body {
 }
 
 header {
+  display: flex;
+  justify-content: space-between; /* title block left, language toggle right */
+  align-items: flex-start;
+  gap: 1rem;
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid #e0e0e0;
+}
+
+.header-main {
+  min-width: 0; /* let the title block shrink instead of overflowing */
 }
 
 header h1 {
   margin: 0;
   font-size: 1.25rem;
+}
+
+/* Segmented EN | 中 language toggle. */
+#lang-toggle {
+  display: flex;
+  flex: none;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.4rem;
+  overflow: hidden;
+}
+
+.lang-btn {
+  padding: 0.3rem 0.6rem;
+  border: none;
+  background: #f2f3f5;
+  color: #555;
+  cursor: pointer;
+  font: inherit;
+}
+
+.lang-btn + .lang-btn {
+  border-left: 1px solid #d0d5dd;
+}
+
+.lang-btn.active {
+  background: #8a94a6;
+  color: #fff;
 }
 
 #status {
@@ -48,12 +83,9 @@ header h1 {
   background: #fff;
 }
 
-/* Base = OFF appearance: outlined and muted. */
+/* Base = OFF appearance: outlined and muted. Each toggle shows a single-language
+   name; the language toggle picks which via the body.lang-* rules below. */
 .toggle {
-  display: flex;
-  flex-direction: column; /* English label over Chinese label */
-  align-items: center;
-  gap: 0.1rem;
   padding: 0.35rem 0.7rem;
   border: 1px solid #d0d5dd;
   border-radius: 0.4rem;
@@ -61,10 +93,12 @@ header h1 {
   color: #9aa0aa;
   cursor: pointer;
   font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
   line-height: 1.2;
 }
 
-.toggle:hover {
+.toggle:not(.active):hover {
   background: #e8eaee;
 }
 
@@ -75,14 +109,14 @@ header h1 {
   color: #fff;
 }
 
-.toggle-en {
-  font-size: 0.85rem;
-  font-weight: 600;
+/* Both language names live in the DOM; show only the active language's, so the
+   layout stays put when switching languages. */
+body.lang-en .toggle-zh {
+  display: none;
 }
 
-.toggle-zh {
-  font-size: 0.7rem;
-  opacity: 0.85;
+body.lang-zh .toggle-en {
+  display: none;
 }
 
 /* Graph wrapper fills the remaining height and anchors the overlaid legend.

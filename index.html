@@ -6,11 +6,21 @@
   <title>Finance Knowledge Base</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<!-- lang-en by default so the right toggle labels show before JS runs (avoids a
+     flash of both languages). app.js overrides this if a choice is stored. -->
+<body class="lang-en">
   <header>
-    <h1>Finance Knowledge Base</h1>
-    <!-- app.js fills this in: shows the active layer and its counts -->
-    <p id="status">Loading data…</p>
+    <div class="header-main">
+      <h1 id="app-title">Finance Knowledge Base</h1>
+      <!-- app.js fills this in: how many nodes/edges are currently visible -->
+      <p id="status">Loading data…</p>
+    </div>
+
+    <!-- Global language toggle. app.js wires the clicks and marks the active one. -->
+    <div id="lang-toggle" role="group" aria-label="Language / 语言">
+      <button class="lang-btn" type="button" data-lang="en">EN</button>
+      <button class="lang-btn" type="button" data-lang="zh">中</button>
+    </div>
   </header>
 
   <!-- One toggle per layer, all on by default. Toggles are additive: several
