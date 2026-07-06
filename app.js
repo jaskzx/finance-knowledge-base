@@ -564,16 +564,17 @@ function centerNode(node) {
   setTimeout(() => node.removeClass("searched"), 1600);
 }
 
-// Zoom by a factor toward a rendered (screen) point. Used by double/triple tap.
-function zoomAt(renderedPosition, factor) {
-  const level = Math.min(5, Math.max(0.05, cy.zoom() * factor)); // clamp
-  const rp = renderedPosition || {
-    x: cy.width() / 2,
-    y: cy.height() / 2,
-  };
+// Double-tap zooms in to at least this level, where the 10px labels render big
+// enough to read (rendered font ≈ 10 * zoom px, so 2 ≈ 20px).
+const READABLE_ZOOM = 2;
+
+// Animate zoom to an absolute level, centered on a rendered (screen) point.
+function zoomToLevel(renderedPosition, level) {
+  const clamped = Math.min(5, Math.max(0.05, level));
+  const rp = renderedPosition || { x: cy.width() / 2, y: cy.height() / 2 };
   cy.animate(
-    { zoom: { level, renderedPosition: rp } },
-    { duration: 180, easing: "ease-out" }
+    { zoom: { level: clamped, renderedPosition: rp } },
+    { duration: 200, easing: "ease-out" }
   );
 }
 
@@ -611,9 +612,10 @@ function setupInteractions() {
         if (firstTarget !== cy) openPanel(firstTarget.id()); // node -> details
         else closePanel(); // empty canvas -> close panel
       } else if (count === 2) {
-        zoomAt(firstRendered, 1.6); // double tap -> zoom in
+        // Double tap -> zoom in to at least a readable level (further if already there).
+        zoomToLevel(firstRendered, Math.max(READABLE_ZOOM, cy.zoom() * 1.8));
       } else {
-        zoomAt(firstRendered, 1 / 1.6); // triple (or more) -> zoom out
+        zoomToLevel(firstRendered, cy.zoom() / 1.8); // triple (or more) -> zoom out
       }
     }, TAP_WINDOW);
   });
