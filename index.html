@@ -39,6 +39,10 @@
     <div id="legend" aria-label="Bucket color legend"></div>
     <!-- Recenters/fits the visible nodes; app.js sets its label per language -->
     <button id="recenter-btn" type="button">Recenter</button>
+
+    <!-- Hover tooltip (desktop) and click/tap detail panel; app.js fills both. -->
+    <div id="tooltip" class="tooltip" hidden></div>
+    <aside id="detail-panel" class="detail-panel" hidden aria-label="Term details"></aside>
   </div>
 
   <!-- Cytoscape core + the cose-bilkent layout and its deps. cose-bilkent is a

@@ -43,6 +43,16 @@ const UI_TEXT = {
     status: (n, e) => `${n} nodes, ${e} edges visible.`,
     recenter: "Recenter",
     searchPlaceholder: "Search a term…",
+    panel: {
+      subgroup: "Subgroup",
+      bucket: "Bucket",
+      definition: "Definition",
+      nuance: "Nuance",
+      formula: "Formula",
+      connected: "Connected terms",
+      none: "—",
+      close: "Close",
+    },
   },
   zh: {
     title: "金融知识库",
@@ -55,6 +65,16 @@ const UI_TEXT = {
     status: (n, e) => `显示 ${n} 个节点，${e} 条连线`,
     recenter: "重新居中",
     searchPlaceholder: "搜索术语…",
+    panel: {
+      subgroup: "子类",
+      bucket: "分类",
+      definition: "定义",
+      nuance: "细微差别",
+      formula: "公式",
+      connected: "相关术语",
+      none: "—",
+      close: "关闭",
+    },
   },
 };
 
@@ -91,9 +111,12 @@ let lang = readLang(); // "en" | "zh"; default English, or the session's choice
 // Which layers are currently shown. Start with every layer on (all visible).
 const visibleLayers = new Set(LAYERS.map((l) => l.id));
 let nodeLayerById = new Map(); // node id -> layer, for counting visible edges
+let nodeById = new Map(); // node id -> full node record, for the detail panel
 // Cache of node positions per visible-state so re-toggling restores the exact
 // prior arrangement. Key = which layers are on; value = Map(nodeId -> {x,y}).
 const posCache = new Map();
+let openNodeId = null; // id of the node whose detail panel is open, or null
+let panelNuanceLang = "en"; // which language the panel's nuance note shows
 
 // Read the remembered language for this session; default to English. Wrapped
 // because sessionStorage can throw when storage is blocked.
@@ -134,6 +157,7 @@ async function main() {
   }
 
   nodeLayerById = new Map(kb.nodes.map((n) => [n.id, n.layer]));
+  nodeById = new Map(kb.nodes.map((n) => [n.id, n]));
 
   cy = createGraph();
   loadAllElements();
@@ -141,6 +165,7 @@ async function main() {
   buildLangToggle();
   setupSearch();
   setupNavigation(); // wheel-to-pan / Ctrl+wheel zoom / arrow keys
+  setupInteractions(); // hover tooltip + click/tap detail panel
   // Recenter button: fit the visible nodes back into view (no re-layout).
   document.getElementById("recenter-btn").addEventListener("click", centerOnVisible);
   applyVisibility(); // all layers on to start, so nothing is hidden yet
@@ -491,6 +516,156 @@ function centerNode(node) {
   setTimeout(() => node.removeClass("searched"), 1600);
 }
 
+// --- Hover tooltip (desktop) + click/tap detail panel. ---
+function setupInteractions() {
+  // Hover tooltip is a desktop-only nicety (touch has no hover).
+  if (!IS_TOUCH) {
+    cy.on("mouseover", "node", (evt) => showTooltip(evt.target));
+    cy.on("mouseout", "node", hideTooltip);
+    cy.on("pan zoom", hideTooltip); // don't leave a stale tooltip while moving
+  }
+
+  // Tap a node -> open its detail panel. "tap" fires for both click and touch.
+  cy.on("tap", "node", (evt) => {
+    hideTooltip();
+    openPanel(evt.target.id());
+  });
+  // Tap empty canvas -> close the panel.
+  cy.on("tap", (evt) => {
+    if (evt.target === cy) closePanel();
+  });
+
+  // Delegated clicks inside the panel: close, related term, nuance toggle.
+  document.getElementById("detail-panel").addEventListener("click", (ev) => {
+    const el = ev.target;
+    if (el.classList.contains("panel-close")) {
+      closePanel();
+    } else if (el.classList.contains("rel-term")) {
+      openPanel(el.dataset.id);
+      centerNode(cy.getElementById(el.dataset.id)); // re-focus the clicked term
+    } else if (el.classList.contains("nuance-toggle")) {
+      panelNuanceLang = panelNuanceLang === "en" ? "zh" : "en";
+      renderPanel();
+    }
+  });
+}
+
+// Small HTML escaper for text pulled from the data into innerHTML.
+function esc(s) {
+  return String(s == null ? "" : s).replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
+  );
+}
+
+// Show a lightweight tooltip above a node: both terms + a one-line definition.
+function showTooltip(node) {
+  const n = nodeById.get(node.id());
+  if (!n) return;
+  const def = (lang === "zh" ? n.definition_zh : n.definition_en) || "";
+  const tip = document.getElementById("tooltip");
+  tip.innerHTML =
+    `<div class="tt-term">${esc(n.en)} · ${esc(n.zh)}</div>` +
+    (def ? `<div class="tt-def">${esc(def)}</div>` : "");
+  const rp = node.renderedPosition(); // position within the #cy box
+  tip.style.left = `${rp.x}px`;
+  tip.style.top = `${rp.y}px`;
+  tip.hidden = false;
+}
+
+function hideTooltip() {
+  document.getElementById("tooltip").hidden = true;
+}
+
+// Node ids directly connected to `id` via any edge (both directions).
+function connectedTerms(id) {
+  const ids = [];
+  kb.edges.forEach((e) => {
+    if (e.source === id) ids.push(e.target);
+    else if (e.target === id) ids.push(e.source);
+  });
+  return [...new Set(ids)];
+}
+
+// "statement_items" -> "Statement items" (the data has no bilingual subgroup names).
+function humanizeSubgroup(s) {
+  return s ? s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "";
+}
+
+// Open the detail panel for a node id.
+function openPanel(id) {
+  openNodeId = id;
+  panelNuanceLang = lang; // nuance starts in the current UI language
+  renderPanel();
+  document.getElementById("detail-panel").hidden = false;
+}
+
+function closePanel() {
+  openNodeId = null;
+  document.getElementById("detail-panel").hidden = true;
+}
+
+// Render the open node into the panel, in the current UI language.
+function renderPanel() {
+  if (!openNodeId) return;
+  const n = nodeById.get(openNodeId);
+  if (!n) return;
+  const t = UI_TEXT[lang];
+  const p = t.panel;
+
+  const definition = lang === "zh" ? n.definition_zh : n.definition_en;
+
+  // Nuance in the chosen language; fall back to the other if the chosen is empty.
+  const nuanceEn = n.nuance_note_en || "";
+  const nuanceZh = n.nuance_note_zh || "";
+  let shownLang = panelNuanceLang;
+  let nuance = shownLang === "zh" ? nuanceZh : nuanceEn;
+  if (!nuance && (shownLang === "zh" ? nuanceEn : nuanceZh)) {
+    shownLang = shownLang === "zh" ? "en" : "zh";
+    nuance = shownLang === "zh" ? nuanceZh : nuanceEn;
+  }
+  const otherNuance = shownLang === "zh" ? nuanceEn : nuanceZh;
+  const otherLabel = shownLang === "zh" ? "Show English" : "显示中文";
+
+  // Directly connected terms, labelled in the current language, clickable.
+  const rels = connectedTerms(n.id)
+    .map((id) => nodeById.get(id))
+    .filter(Boolean)
+    .map(
+      (m) =>
+        `<button class="rel-term" type="button" data-id="${esc(m.id)}">` +
+        `${esc(lang === "zh" ? m.zh : m.en)}</button>`
+    )
+    .join("");
+
+  const field = (label, body) =>
+    `<div class="panel-field"><div class="panel-label">${esc(label)}</div>${body}</div>`;
+
+  let html = `<button class="panel-close" type="button" aria-label="${esc(p.close)}">×</button>`;
+  html += `<div class="panel-terms-en">${esc(n.en)}</div>`;
+  html += `<div class="panel-terms-zh">${esc(n.zh)}</div>`;
+  if (n.subgroup) html += field(p.subgroup, esc(humanizeSubgroup(n.subgroup)));
+  html += field(
+    p.bucket,
+    `<span class="panel-bucket-swatch" style="background:${
+      BUCKET_COLORS[n.bucket] || "#8a94a6"
+    }"></span>${esc(n.bucket)} — ${esc(t.bucket[n.bucket] || "")}`
+  );
+  if (definition) html += field(p.definition, esc(definition));
+  if (nuance) {
+    const toggle = otherNuance
+      ? ` <button class="nuance-toggle" type="button">${esc(otherLabel)}</button>`
+      : "";
+    html += field(p.nuance, esc(nuance) + toggle);
+  }
+  if (n.formula_display) {
+    html += field(p.formula, `<div class="panel-formula">${esc(n.formula_display)}</div>`);
+  }
+  html += field(p.connected, rels || esc(p.none));
+
+  document.getElementById("detail-panel").innerHTML = html;
+}
+
 // Wire the EN | 中 buttons to switch language.
 function buildLangToggle() {
   document.querySelectorAll("#lang-toggle .lang-btn").forEach((btn) => {
@@ -534,6 +709,11 @@ function applyLanguage() {
 
   buildLegend(); // legend text is language-dependent
   updateStatus(); // status sentence is language-dependent
+
+  if (openNodeId) {
+    panelNuanceLang = lang; // the open panel follows the current UI language
+    renderPanel();
+  }
 }
 
 // Build the bucket legend in the current language, from the shared constants.

@@ -214,6 +214,140 @@ body.lang-zh .toggle-en {
   background: #eef1f5;
 }
 
+/* Hover tooltip: floats above a node, never intercepts the mouse. */
+.tooltip {
+  position: absolute;
+  z-index: 5;
+  transform: translate(-50%, calc(-100% - 12px)); /* centered above the node */
+  max-width: 240px;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #d0d5dd;
+  border-radius: 0.4rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-size: 0.8rem;
+  color: #222;
+  pointer-events: none;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
+.tt-term {
+  font-weight: 600;
+}
+
+.tt-def {
+  margin-top: 0.15rem;
+  color: #555;
+  white-space: nowrap; /* keep it a single line... */
+  overflow: hidden;
+  text-overflow: ellipsis; /* ...truncated with an ellipsis */
+}
+
+/* Pinned detail panel on the right of the graph. */
+.detail-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 340px;
+  max-width: 85%;
+  z-index: 6;
+  padding: 1rem 1.1rem 1.5rem;
+  background: #fff;
+  border-left: 1px solid #e0e0e0;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.08);
+  overflow-y: auto;
+  font-size: 0.9rem;
+  color: #222;
+}
+
+.detail-panel[hidden] {
+  display: none;
+}
+
+.panel-close {
+  float: right;
+  border: none;
+  background: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: #888;
+  cursor: pointer;
+}
+
+.panel-terms-en {
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding-right: 1.5rem; /* leave room for the close button */
+}
+
+.panel-terms-zh {
+  color: #555;
+}
+
+.panel-field {
+  margin-top: 0.85rem;
+}
+
+.panel-label {
+  margin-bottom: 0.2rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a8f99;
+}
+
+.panel-bucket-swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  vertical-align: -1px;
+}
+
+.panel-formula {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: #f5f6f8;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.3rem;
+  overflow-x: auto;
+}
+
+/* Clickable connected term chips. */
+.rel-term {
+  display: inline-block;
+  margin: 0.15rem 0.25rem 0.15rem 0;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.4rem;
+  background: #f7f8fa;
+  color: #2a78d6;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.rel-term:hover {
+  background: #eef1f5;
+}
+
+.nuance-toggle {
+  margin-left: 0.3rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2a78d6;
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Phone / narrow view: tighten chrome so the graph keeps most of the screen. */
 @media (max-width: 640px) {
   header {
@@ -255,5 +389,11 @@ body.lang-zh .toggle-en {
     bottom: 8px;
     padding: 0.35rem 0.6rem;
     font-size: 0.8rem;
+  }
+
+  /* Detail panel takes the whole graph area on a phone. */
+  .detail-panel {
+    width: 100%;
+    max-width: 100%;
   }
 }
