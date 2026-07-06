@@ -242,45 +242,87 @@ function capturePositions(nodes) {
   return m;
 }
 
-// Lay the whole (all-on) graph out once, then remember it as the full state.
-function initialLayout() {
-  const layout = cy.layout({ ...LAYOUT_BASE, randomize: true, animate: false, fit: true });
-  layout.one("layoutstop", () => posCache.set(stateKey(), capturePositions(cy.nodes())));
+// Widen node x-positions so the cloud fills the viewport width instead of a
+// central column. cose-bilkent makes a roughly round cloud; fitting that on a
+// wide screen leaves big side margins. Stretching x to match the container's
+// aspect ratio fills the width. Only x is scaled, and only outward, so labels
+// never get MORE crowded.
+function spreadToWidth(nodes) {
+  if (nodes.empty()) return;
+  const bb = nodes.boundingBox();
+  const el = document.getElementById("cy");
+  const W = el.clientWidth || 1;
+  const H = el.clientHeight || 1;
+  if (bb.w <= 0 || bb.h <= 0) return;
+
+  const targetAspect = W / H;
+  const currentAspect = bb.w / bb.h;
+  if (currentAspect >= targetAspect) return; // already at least as wide as the screen
+  const s = Math.min(targetAspect / currentAspect, 2.5); // cap the stretch
+
+  const cx = (bb.x1 + bb.x2) / 2;
+  nodes.forEach((n) => n.position("x", cx + (n.position("x") - cx) * s));
+}
+
+// Glide a set of nodes to remembered/target positions.
+function animateNodesTo(nodes, posMap) {
+  nodes.forEach((n) => {
+    const p = posMap.get(n.id());
+    if (p) n.animate({ position: p }, { duration: 400, easing: "ease-in-out" });
+  });
+}
+
+// Run the force layout on the visible elements, widen it to fill the screen,
+// cache the result, and settle the view. animateFromPrev true => nodes glide
+// from where they are (on toggle); false => the first, fresh layout.
+function runLayout(animateFromPrev) {
+  const nodes = cy.nodes(":visible");
+  if (nodes.empty()) return;
+  const key = stateKey();
+  const prev = animateFromPrev ? capturePositions(nodes) : null;
+
+  // animate:false — we compute positions, widen them, then animate the move.
+  const layout = cy.elements(":visible").layout({
+    ...LAYOUT_BASE,
+    randomize: !animateFromPrev, // fresh spread first time; incremental on toggle
+    animate: false,
+    fit: false,
+  });
+  layout.one("layoutstop", () => {
+    spreadToWidth(nodes); // widen the cloud to fill the width
+    const target = capturePositions(nodes);
+    posCache.set(key, target);
+    if (animateFromPrev) {
+      prev.forEach((p, id) => cy.getElementById(id).position(p)); // back to start...
+      animateNodesTo(nodes, target); // ...then glide to the widened target
+    }
+    cy.animate({
+      fit: { eles: nodes, padding: 50 },
+      duration: animateFromPrev ? 400 : 250,
+      easing: "ease-in-out",
+    });
+  });
   layout.run();
 }
 
-// After a toggle: reflow the visible nodes to fill the freed space, or — if we
-// have seen this exact visible-state before — animate back to that arrangement.
+// Lay the whole (all-on) graph out once, then remember it as the full state.
+function initialLayout() {
+  runLayout(false);
+}
+
+// After a toggle: animate back to a seen arrangement, or lay out + widen a new one.
 function reflow() {
   const visible = cy.nodes(":visible");
   if (visible.empty()) return; // nothing to show
 
-  const key = stateKey();
-  const cached = posCache.get(key);
+  const cached = posCache.get(stateKey());
   if (cached) {
     // Seen before: glide every visible node back to its remembered spot.
-    visible.forEach((n) => {
-      const p = cached.get(n.id());
-      if (p) n.animate({ position: p }, { duration: 400, easing: "ease-in-out" });
-    });
+    animateNodesTo(visible, cached);
     centerOnVisible();
     return;
   }
-
-  // New state: re-run the layout on just the visible elements. randomize:false
-  // starts from current positions, so nodes flow in from where they are;
-  // animate:"end" tweens them to the compact result. Cache it when it settles.
-  const layout = cy.elements(":visible").layout({
-    ...LAYOUT_BASE,
-    randomize: false,
-    animate: "end",
-    animationDuration: 450,
-    fit: true,
-  });
-  layout.one("layoutstop", () =>
-    posCache.set(key, capturePositions(cy.nodes(":visible")))
-  );
-  layout.run();
+  runLayout(true); // new state: lay out, widen, and animate in
 }
 
 // Build the toggle bar from LAYERS; all start on (.active). Each button holds
