@@ -1,9 +1,11 @@
-// Finance Knowledge Base — layer toggles + language toggle (Steps 4-5).
-// All nodes are loaded and laid out once (stable positions). Five per-layer
-// toggles additively show/hide layers; toggling re-centers on what's visible.
-// One global EN <-> 中 toggle flips every label and all UI chrome, and the
-// choice is remembered for the session. Nodes are colored by bucket. No node
-// click behavior yet.
+// Finance Knowledge Base — spread layout, scroll/arrow navigation, search (Step 7).
+// Layout uses cose-bilkent (nodeDimensionsIncludeLabels so labels never overlap,
+// tile:false + weak gravity + strong repulsion so nodes spread across the page
+// instead of a central column). Navigate by mouse wheel (pan; Ctrl+wheel zooms)
+// or arrow keys. A search box centers the matching node (revealing its layer if
+// hidden) and does nothing if nothing matches. Toggling a layer reflows the
+// visible nodes; positions are cached per visible-state so re-toggling restores
+// the exact prior arrangement. Nodes are colored by bucket; EN/中 language toggle.
 
 // Path is relative to index.html, so this works under GitHub Pages subpaths too.
 const DATA_URL = "data/finance_kb.json";
@@ -39,6 +41,7 @@ const UI_TEXT = {
       C: "No real equivalent",
     },
     status: (n, e) => `${n} nodes, ${e} edges visible.`,
+    recenter: "Recenter",
   },
   zh: {
     title: "金融知识库",
@@ -49,10 +52,29 @@ const UI_TEXT = {
       C: "没有真正对应的概念",
     },
     status: (n, e) => `显示 ${n} 个节点，${e} 条连线`,
+    recenter: "重新居中",
   },
 };
 
 const LANG_KEY = "fkb-lang"; // sessionStorage key for the remembered language
+
+// cose-bilkent if the extension loaded, else fall back to the built-in cose
+// (which can't reserve label boxes, but at least still lays the graph out).
+const LAYOUT_NAME =
+  typeof window.cytoscapeCoseBilkent !== "undefined" ? "cose-bilkent" : "cose";
+
+// Shared layout tuning. nodeDimensionsIncludeLabels reserves each node's label
+// box (no overlap); weak gravity + strong repulsion spread nodes wide.
+const LAYOUT_BASE = {
+  name: LAYOUT_NAME,
+  nodeDimensionsIncludeLabels: true, // spacing accounts for labels -> no overlap
+  tile: false, // keep an organic cloud, not a tiled grid
+  idealEdgeLength: 70,
+  nodeRepulsion: 4500,
+  gravity: 0.5, // pull the cloud together so gaps stay small
+  gravityRange: 3.8,
+  padding: 30,
+};
 
 let kb = null; // the loaded knowledge base { meta, nodes, edges }
 let cy = null; // the single Cytoscape instance holding all nodes
@@ -60,6 +82,9 @@ let lang = readLang(); // "en" | "zh"; default English, or the session's choice
 // Which layers are currently shown. Start with every layer on (all visible).
 const visibleLayers = new Set(LAYERS.map((l) => l.id));
 let nodeLayerById = new Map(); // node id -> layer, for counting visible edges
+// Cache of node positions per visible-state so re-toggling restores the exact
+// prior arrangement. Key = which layers are on; value = Map(nodeId -> {x,y}).
+const posCache = new Map();
 
 // Read the remembered language for this session; default to English. Wrapped
 // because sessionStorage can throw when storage is blocked.
@@ -105,8 +130,11 @@ async function main() {
   loadAllElements();
   buildToggles();
   buildLangToggle();
+  // Recenter button: fit the visible nodes back into view (no re-layout).
+  document.getElementById("recenter-btn").addEventListener("click", centerOnVisible);
   applyVisibility(); // all layers on to start, so nothing is hidden yet
   applyLanguage(); // apply the remembered/default language to labels + all chrome
+  initialLayout(); // lay the full graph out once and cache it as the "all on" state
 }
 
 // Create an empty Cytoscape instance; loadAllElements() fills it.
@@ -152,12 +180,11 @@ function createGraph() {
       },
     ],
 
-    // pan / zoom / node-drag are all enabled by default in Cytoscape.
+    // pan (drag) and node-drag stay on by default.
   });
 }
 
-// Add every node and edge once, then lay the whole graph out a single time.
-// Keeping one stable layout means toggling a layer never re-scatters the rest.
+// Add every node and edge once. Layout is run separately (initialLayout).
 function loadAllElements() {
   const nodeEls = kb.nodes.map((n) => ({
     // Carry both languages so the label can be swapped without a re-layout.
@@ -178,18 +205,61 @@ function loadAllElements() {
     .map((e, i) => ({ data: { id: `e${i}`, source: e.source, target: e.target } }));
 
   cy.add({ nodes: nodeEls, edges: edgeEls });
-  cy
-    .layout({
-      name: "cose",
-      animate: false, // settle instantly
-      randomize: true,
-      fit: true,
-      padding: 40,
-      componentSpacing: 120, // room between the many disconnected nodes
-      idealEdgeLength: 80,
-      nodeOverlap: 24, // extra repulsion so labels overlap less
-    })
-    .run();
+}
+
+// The set of currently-on layers, as a stable cache key.
+function stateKey() {
+  return LAYERS.filter((l) => visibleLayers.has(l.id))
+    .map((l) => l.id)
+    .join("|");
+}
+
+// Snapshot positions of a node collection into a Map(id -> {x, y}).
+function capturePositions(nodes) {
+  const m = new Map();
+  nodes.forEach((n) => m.set(n.id(), { x: n.position("x"), y: n.position("y") }));
+  return m;
+}
+
+// Lay the whole (all-on) graph out once, then remember it as the full state.
+function initialLayout() {
+  const layout = cy.layout({ ...LAYOUT_BASE, randomize: true, animate: false, fit: true });
+  layout.one("layoutstop", () => posCache.set(stateKey(), capturePositions(cy.nodes())));
+  layout.run();
+}
+
+// After a toggle: reflow the visible nodes to fill the freed space, or — if we
+// have seen this exact visible-state before — animate back to that arrangement.
+function reflow() {
+  const visible = cy.nodes(":visible");
+  if (visible.empty()) return; // nothing to show
+
+  const key = stateKey();
+  const cached = posCache.get(key);
+  if (cached) {
+    // Seen before: glide every visible node back to its remembered spot.
+    visible.forEach((n) => {
+      const p = cached.get(n.id());
+      if (p) n.animate({ position: p }, { duration: 400, easing: "ease-in-out" });
+    });
+    centerOnVisible();
+    return;
+  }
+
+  // New state: re-run the layout on just the visible elements. randomize:false
+  // starts from current positions, so nodes flow in from where they are;
+  // animate:"end" tweens them to the compact result. Cache it when it settles.
+  const layout = cy.elements(":visible").layout({
+    ...LAYOUT_BASE,
+    randomize: false,
+    animate: "end",
+    animationDuration: 450,
+    fit: true,
+  });
+  layout.one("layoutstop", () =>
+    posCache.set(key, capturePositions(cy.nodes(":visible")))
+  );
+  layout.run();
 }
 
 // Build the toggle bar from LAYERS; all start on (.active). Each button holds
@@ -210,7 +280,7 @@ function buildToggles() {
   });
 }
 
-// Flip one layer on/off, refresh visibility, then re-center on what's left.
+// Flip one layer on/off, refresh visibility, then reflow what's left.
 function toggleLayer(layerId, btn) {
   const nowOn = !visibleLayers.has(layerId);
   if (nowOn) {
@@ -223,7 +293,7 @@ function toggleLayer(layerId, btn) {
 
   applyVisibility();
   updateStatus();
-  centerOnVisible(); // bring the remaining nodes back to the middle
+  reflow(); // compact the remaining nodes / restore the prior arrangement
 }
 
 // Show/hide elements based on visibleLayers. Nodes follow their own layer; an
@@ -244,6 +314,7 @@ function applyVisibility() {
 }
 
 // Animate the viewport to fit the currently visible nodes (centers + zooms).
+// Used by the Recenter button and after a cached reflow.
 function centerOnVisible() {
   const visible = cy.nodes(":visible");
   if (visible.empty()) return; // nothing to center on
@@ -278,8 +349,9 @@ function applyLanguage() {
   document.body.classList.toggle("lang-en", lang === "en");
   document.documentElement.lang = lang === "zh" ? "zh" : "en";
 
-  // Page title.
+  // Page title and recenter button label.
   document.getElementById("app-title").textContent = t.title;
+  document.getElementById("recenter-btn").textContent = t.recenter;
 
   // Node labels: swap each to the chosen language's stored value.
   cy.batch(() => {

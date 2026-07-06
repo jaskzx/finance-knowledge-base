@@ -180,3 +180,23 @@ body.lang-zh .toggle-en {
 .legend-meaning {
   color: #444;
 }
+
+/* Recenter button, overlaid bottom-right of the graph. */
+#recenter-btn {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 0.4rem 0.8rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d0d5dd;
+  border-radius: 0.4rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  color: #333;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+#recenter-btn:hover {
+  background: #eef1f5;
+}

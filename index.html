@@ -33,11 +33,19 @@
     <div id="cy"></div>
     <!-- app.js fills this so the swatches always match the node colors -->
     <div id="legend" aria-label="Bucket color legend"></div>
+    <!-- Recenters/fits the visible nodes; app.js sets its label per language -->
+    <button id="recenter-btn" type="button">Recenter</button>
   </div>
 
-  <!-- Cytoscape core only. We use its built-in `cose` force layout, so no
-       layout extensions are needed. -->
+  <!-- Cytoscape core + the cose-bilkent layout and its deps. cose-bilkent is a
+       force layout that can reserve each node's LABEL box (so labels never
+       overlap) while keeping an organic cloud. Load order matters:
+       layout-base <- cose-base <- cytoscape-cose-bilkent, and the extension
+       auto-registers against the global `cytoscape` present at load time. -->
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
