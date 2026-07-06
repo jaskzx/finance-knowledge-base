@@ -564,7 +564,21 @@ function centerNode(node) {
   setTimeout(() => node.removeClass("searched"), 1600);
 }
 
-// --- Hover tooltip (desktop) + click/tap detail panel. ---
+// Zoom by a factor toward a rendered (screen) point. Used by double/triple tap.
+function zoomAt(renderedPosition, factor) {
+  const level = Math.min(5, Math.max(0.05, cy.zoom() * factor)); // clamp
+  const rp = renderedPosition || {
+    x: cy.width() / 2,
+    y: cy.height() / 2,
+  };
+  cy.animate(
+    { zoom: { level, renderedPosition: rp } },
+    { duration: 180, easing: "ease-out" }
+  );
+}
+
+// --- Hover tooltip (desktop) + tap gestures (panel / double-tap zoom in /
+//     triple-tap zoom out). ---
 function setupInteractions() {
   // Hover tooltip is a desktop-only nicety (touch has no hover).
   if (!IS_TOUCH) {
@@ -573,14 +587,35 @@ function setupInteractions() {
     cy.on("pan zoom", hideTooltip); // don't leave a stale tooltip while moving
   }
 
-  // Tap a node -> open its detail panel. "tap" fires for both click and touch.
-  cy.on("tap", "node", (evt) => {
-    hideTooltip();
-    openPanel(evt.target.id());
-  });
-  // Tap empty canvas -> close the panel.
+  // One tap = open/close the panel; two taps = zoom in; three = zoom out. We
+  // wait a short window to tell them apart, so a single tap resolves a beat
+  // after you lift off (the cost of supporting double/triple tap).
+  const TAP_WINDOW = 220; // ms to wait for further taps
+  let taps = 0;
+  let tapTimer = null;
+  let firstTarget = null;
+  let firstRendered = null;
+
   cy.on("tap", (evt) => {
-    if (evt.target === cy) closePanel();
+    hideTooltip();
+    taps += 1;
+    if (taps === 1) {
+      firstTarget = evt.target; // a node, or cy itself for empty canvas
+      firstRendered = evt.renderedPosition;
+    }
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => {
+      const count = taps;
+      taps = 0;
+      if (count === 1) {
+        if (firstTarget !== cy) openPanel(firstTarget.id()); // node -> details
+        else closePanel(); // empty canvas -> close panel
+      } else if (count === 2) {
+        zoomAt(firstRendered, 1.6); // double tap -> zoom in
+      } else {
+        zoomAt(firstRendered, 1 / 1.6); // triple (or more) -> zoom out
+      }
+    }, TAP_WINDOW);
   });
 
   // Delegated clicks inside the panel: close, related term, nuance toggle.
