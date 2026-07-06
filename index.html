@@ -12,7 +12,8 @@
   <header>
     <div class="header-main">
       <h1 id="app-title">Finance Knowledge Base</h1>
-      <!-- app.js fills this in: how many nodes/edges are currently visible -->
+      <!-- app.js fills tagline + status per language -->
+      <p id="tagline" class="tagline"></p>
       <p id="status">Loading data…</p>
     </div>
 
@@ -38,12 +39,10 @@
        are both on. app.js builds these. -->
   <nav id="bucket-toggles" aria-label="Show or hide buckets"></nav>
 
-  <!-- Graph canvas plus an overlaid bucket-color legend. -->
+  <!-- Graph canvas plus overlays (recenter button, hover tooltip, detail panel). -->
   <div id="graph-wrap">
     <!-- Cytoscape renders the graph into this element -->
     <div id="cy"></div>
-    <!-- app.js fills this so the swatches always match the node colors -->
-    <div id="legend" aria-label="Bucket color legend"></div>
     <!-- Recenters/fits the visible nodes; app.js sets its label per language -->
     <button id="recenter-btn" type="button">Recenter</button>
 

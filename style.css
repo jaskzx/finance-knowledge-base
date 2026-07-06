@@ -67,6 +67,12 @@ header h1 {
   font-size: 1.25rem;
 }
 
+.tagline {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: #666;
+}
+
 /* Segmented EN | 中 language toggle. */
 #lang-toggle {
   display: flex;
@@ -176,8 +182,9 @@ body.lang-zh .toggle-en {
   display: none;
 }
 
-/* Graph wrapper fills the remaining height and anchors the overlaid legend.
-   min-height:0 lets this flex child shrink so it gets a real, non-zero height. */
+/* Graph wrapper fills the remaining height and anchors the overlays (recenter
+   button, tooltip, detail panel). min-height:0 lets this flex child shrink so
+   it gets a real, non-zero height. */
 #graph-wrap {
   position: relative;
   flex: 1 1 auto;
@@ -189,53 +196,6 @@ body.lang-zh .toggle-en {
   position: absolute;
   inset: 0;
   background: #fafafa;
-}
-
-/* Small legend overlaid on the graph, bottom-left. */
-#legend {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  max-width: 15rem;
-  padding: 0.5rem 0.7rem;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #e0e0e0;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  font-size: 0.8rem;
-  color: #333;
-}
-
-.legend-title {
-  margin-bottom: 0.35rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #555;
-}
-
-.legend-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0.2rem 0;
-}
-
-/* Swatch mirrors a node: same fill, same thin ring. */
-.legend-swatch {
-  flex: none;
-  width: 0.85rem;
-  height: 0.85rem;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.25);
-}
-
-.legend-key {
-  width: 1rem;
-  font-weight: 700;
-}
-
-.legend-meaning {
-  color: #444;
 }
 
 /* Recenter button, overlaid bottom-right of the graph. */
@@ -418,14 +378,6 @@ body.lang-zh .toggle-en {
   .toggle {
     padding: 0.3rem 0.55rem;
     font-size: 0.8rem;
-  }
-
-  #legend {
-    left: 8px;
-    bottom: 8px;
-    max-width: 62vw;
-    padding: 0.4rem 0.55rem;
-    font-size: 0.72rem;
   }
 
   #recenter-btn {

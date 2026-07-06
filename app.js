@@ -34,7 +34,7 @@ const BUCKET_COLORS = {
 const UI_TEXT = {
   en: {
     title: "Finance Knowledge Base",
-    legendTitle: "Cross-language distance",
+    tagline: "Bilingual finance terms, colored by cross-language distance.",
     bucket: {
       A: "Translates cleanly",
       B: "Same concept, treated differently",
@@ -57,7 +57,7 @@ const UI_TEXT = {
   },
   zh: {
     title: "金融知识库",
-    legendTitle: "跨语言概念距离",
+    tagline: "双语金融术语，按跨语言差异着色。",
     bucket: {
       A: "可直接对应翻译",
       B: "同一概念，处理方式不同",
@@ -813,8 +813,9 @@ function applyLanguage() {
   document.body.classList.toggle("lang-en", lang === "en");
   document.documentElement.lang = lang === "zh" ? "zh" : "en";
 
-  // Page title, buttons, and search placeholder.
+  // Page title, tagline, buttons, and search placeholder.
   document.getElementById("app-title").textContent = t.title;
+  document.getElementById("tagline").textContent = t.tagline;
   document.getElementById("recenter-btn").textContent = t.recenter;
   document.getElementById("spotlight-btn").textContent = t.spotlight;
   document.getElementById("search").placeholder = t.searchPlaceholder;
@@ -831,7 +832,6 @@ function applyLanguage() {
     b.classList.toggle("active", b.dataset.lang === lang);
   });
 
-  buildLegend(); // legend text is language-dependent
   refreshBucketLabels(); // bucket toggle meanings are language-dependent
   updateStatus(); // status sentence is language-dependent
 
@@ -839,23 +839,6 @@ function applyLanguage() {
     panelNuanceLang = lang; // the open panel follows the current UI language
     renderPanel();
   }
-}
-
-// Build the bucket legend in the current language, from the shared constants.
-function buildLegend() {
-  const t = UI_TEXT[lang];
-  const rows = ["A", "B", "C"]
-    .map(
-      (b) =>
-        `<div class="legend-row">` +
-        `<span class="legend-swatch" style="background:${BUCKET_COLORS[b]}"></span>` +
-        `<span class="legend-key">${b}</span>` +
-        `<span class="legend-meaning">${t.bucket[b]}</span>` +
-        `</div>`
-    )
-    .join("");
-  document.getElementById("legend").innerHTML =
-    `<div class="legend-title">${t.legendTitle}</div>${rows}`;
 }
 
 // Status line: how many nodes/edges are currently visible, in the current language.
