@@ -1,30 +1,47 @@
-/* Basic page styling. Kept minimal for the scaffold step — no graph yet. */
+/* Page + graph styling. Header on top, graph fills the rest of the viewport. */
 
 :root {
   color-scheme: light dark; /* respect the OS light/dark preference */
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   line-height: 1.5;
+  display: flex;
+  flex-direction: column; /* header on top, graph fills the remaining height */
 }
 
-main {
-  max-width: 40rem;
-  margin: 3rem auto;
-  padding: 0 1.5rem;
+header {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #e0e0e0;
 }
 
-h1 {
-  font-size: 1.5rem;
+header h1 {
+  margin: 0;
+  font-size: 1.25rem;
 }
 
 #status {
-  font-size: 1.125rem;
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+  color: #555;
 }
 
 /* Shown if the fetch fails (e.g. opened via file:// instead of a local server). */
 .error {
   color: #b00020;
+}
+
+/* The Cytoscape canvas fills all remaining height. min-height:0 lets this flex
+   child shrink so it gets a real, non-zero height for the graph to render into. */
+#cy {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #fafafa;
 }
