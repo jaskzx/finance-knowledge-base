@@ -31,6 +31,25 @@ header {
   margin-right: auto; /* push search + language toggle to the right */
 }
 
+/* Divergence-spotlight toggle. Active = red, matching bucket C. */
+.spotlight-btn {
+  flex: none;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.4rem;
+  background: #f2f3f5;
+  color: #555;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.spotlight-btn.active {
+  background: #d63a2f;
+  border-color: #d63a2f;
+  color: #fff;
+}
+
 /* Search box: grows to fill the middle, wraps under the title when cramped. */
 .search {
   flex: 1 1 12rem;

@@ -42,6 +42,7 @@ const UI_TEXT = {
     },
     status: (n, e) => `${n} nodes, ${e} edges visible.`,
     recenter: "Recenter",
+    spotlight: "Divergence spotlight",
     searchPlaceholder: "Search a term…",
     panel: {
       subgroup: "Subgroup",
@@ -64,6 +65,7 @@ const UI_TEXT = {
     },
     status: (n, e) => `显示 ${n} 个节点，${e} 条连线`,
     recenter: "重新居中",
+    spotlight: "差异聚焦",
     searchPlaceholder: "搜索术语…",
     panel: {
       subgroup: "子类",
@@ -118,6 +120,7 @@ let nodeById = new Map(); // node id -> full node record (panel + visibility che
 const posCache = new Map();
 let openNodeId = null; // id of the node whose detail panel is open, or null
 let panelNuanceLang = "en"; // which language the panel's nuance note shows
+let spotlightOn = false; // divergence spotlight: dim all but bucket C
 
 // Read the remembered language for this session; default to English. Wrapped
 // because sessionStorage can throw when storage is blocked.
@@ -169,6 +172,7 @@ async function main() {
   setupInteractions(); // hover tooltip + click/tap detail panel
   // Recenter button: fit the visible nodes back into view (no re-layout).
   document.getElementById("recenter-btn").addEventListener("click", centerOnVisible);
+  document.getElementById("spotlight-btn").addEventListener("click", toggleSpotlight);
   applyVisibility(); // all layers on to start, so nothing is hidden yet
   applyLanguage(); // apply the remembered/default language to labels + all chrome
   initialLayout(); // lay the full graph out once and cache it as the "all on" state
@@ -212,10 +216,15 @@ function createGraph() {
       // Bucket color overrides (more specific, so they win over the base rule).
       ...bucketStyles,
       {
-        // Transient highlight for a searched node (amber ring — not part of the
-        // blue conceptual-distance encoding, so it can't be misread as a bucket).
+        // Transient highlight for a searched node (amber ring — outside the
+        // bucket palette, so it can't be misread as a bucket).
         selector: "node.searched",
         style: { "border-color": "#f5a623", "border-width": 4 },
+      },
+      {
+        // Divergence spotlight: everything but bucket C fades back.
+        selector: "node.dimmed",
+        style: { opacity: 0.15, "text-opacity": 0.15 },
       },
       {
         selector: "edge",
@@ -224,6 +233,10 @@ function createGraph() {
           "line-color": "#dfe3e9", // light gray so edges recede behind the nodes
           "curve-style": "bezier",
         },
+      },
+      {
+        selector: "edge.dimmed",
+        style: { opacity: 0.08 },
       },
     ],
 
@@ -439,6 +452,31 @@ function toggleBucket(b) {
   applyVisibility();
   updateStatus();
   reflow();
+}
+
+// Divergence spotlight: dim everything except bucket C and the edges touching it,
+// so the no-equivalence concepts stand out (nodes stay in place, just faded).
+function toggleSpotlight() {
+  spotlightOn = !spotlightOn;
+  const btn = document.getElementById("spotlight-btn");
+  btn.classList.toggle("active", spotlightOn);
+  btn.setAttribute("aria-pressed", String(spotlightOn));
+  applySpotlight();
+}
+
+function applySpotlight() {
+  cy.batch(() => {
+    if (!spotlightOn) {
+      cy.elements().removeClass("dimmed"); // back to normal
+      return;
+    }
+    cy.nodes().forEach((n) => n.toggleClass("dimmed", n.data("bucket") !== "C"));
+    cy.edges().forEach((e) => {
+      const touchesC =
+        e.source().data("bucket") === "C" || e.target().data("bucket") === "C";
+      e.toggleClass("dimmed", !touchesC);
+    });
+  });
 }
 
 // Show/hide elements by layer AND bucket. An edge is shown only when both of
@@ -775,9 +813,10 @@ function applyLanguage() {
   document.body.classList.toggle("lang-en", lang === "en");
   document.documentElement.lang = lang === "zh" ? "zh" : "en";
 
-  // Page title, recenter button label, search placeholder.
+  // Page title, buttons, and search placeholder.
   document.getElementById("app-title").textContent = t.title;
   document.getElementById("recenter-btn").textContent = t.recenter;
+  document.getElementById("spotlight-btn").textContent = t.spotlight;
   document.getElementById("search").placeholder = t.searchPlaceholder;
 
   // Node labels: swap each to the chosen language's stored value.
