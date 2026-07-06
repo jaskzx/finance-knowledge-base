@@ -19,15 +19,28 @@ body {
 
 header {
   display: flex;
-  justify-content: space-between; /* title block left, language toggle right */
-  align-items: flex-start;
-  gap: 1rem;
+  flex-wrap: wrap; /* search/toggle drop below the title on narrow screens */
+  align-items: center;
+  gap: 0.75rem 1rem;
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid #e0e0e0;
 }
 
 .header-main {
   min-width: 0; /* let the title block shrink instead of overflowing */
+  margin-right: auto; /* push search + language toggle to the right */
+}
+
+/* Search box: grows to fill the middle, wraps under the title when cramped. */
+.search {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  max-width: 22rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.4rem;
+  font: inherit;
+  font-size: 0.9rem;
 }
 
 header h1 {

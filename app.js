@@ -42,6 +42,7 @@ const UI_TEXT = {
     },
     status: (n, e) => `${n} nodes, ${e} edges visible.`,
     recenter: "Recenter",
+    searchPlaceholder: "Search a term…",
   },
   zh: {
     title: "金融知识库",
@@ -53,6 +54,7 @@ const UI_TEXT = {
     },
     status: (n, e) => `显示 ${n} 个节点，${e} 条连线`,
     recenter: "重新居中",
+    searchPlaceholder: "搜索术语…",
   },
 };
 
@@ -69,11 +71,11 @@ const LAYOUT_BASE = {
   name: LAYOUT_NAME,
   nodeDimensionsIncludeLabels: true, // spacing accounts for labels -> no overlap
   tile: false, // keep an organic cloud, not a tiled grid
-  idealEdgeLength: 70,
-  nodeRepulsion: 4500,
-  gravity: 0.5, // pull the cloud together so gaps stay small
-  gravityRange: 3.8,
-  padding: 30,
+  idealEdgeLength: 100,
+  nodeRepulsion: 10000, // strong push so nodes fill the width, not a center column
+  gravity: 0.1, // weak center pull so the cloud spreads out
+  gravityRange: 4.5,
+  padding: 40,
 };
 
 let kb = null; // the loaded knowledge base { meta, nodes, edges }
@@ -130,6 +132,8 @@ async function main() {
   loadAllElements();
   buildToggles();
   buildLangToggle();
+  setupSearch();
+  setupNavigation(); // wheel-to-pan / Ctrl+wheel zoom / arrow keys
   // Recenter button: fit the visible nodes back into view (no re-layout).
   document.getElementById("recenter-btn").addEventListener("click", centerOnVisible);
   applyVisibility(); // all layers on to start, so nothing is hidden yet
@@ -147,6 +151,9 @@ function createGraph() {
 
   return cytoscape({
     container: document.getElementById("cy"),
+
+    // Wheel zoom is off: we handle the wheel ourselves so plain scroll pans.
+    userZoomingEnabled: false,
 
     style: [
       {
@@ -170,6 +177,12 @@ function createGraph() {
       },
       // Bucket color overrides (more specific, so they win over the base rule).
       ...bucketStyles,
+      {
+        // Transient highlight for a searched node (amber ring — not part of the
+        // blue conceptual-distance encoding, so it can't be misread as a bucket).
+        selector: "node.searched",
+        style: { "border-color": "#f5a623", "border-width": 4 },
+      },
       {
         selector: "edge",
         style: {
@@ -275,22 +288,29 @@ function buildToggles() {
     btn.innerHTML =
       `<span class="toggle-en">${layer.en}</span>` +
       `<span class="toggle-zh">${layer.zh}</span>`;
-    btn.addEventListener("click", () => toggleLayer(layer.id, btn));
+    btn.addEventListener("click", () => toggleLayer(layer.id));
     nav.appendChild(btn);
   });
 }
 
-// Flip one layer on/off, refresh visibility, then reflow what's left.
-function toggleLayer(layerId, btn) {
-  const nowOn = !visibleLayers.has(layerId);
-  if (nowOn) {
+// Set a layer's on/off state in both the model and its toggle button (no reflow;
+// the caller decides when to reflow). Shared by the toggles and search-reveal.
+function setLayerState(layerId, on) {
+  if (on) {
     visibleLayers.add(layerId);
   } else {
     visibleLayers.delete(layerId);
   }
-  btn.classList.toggle("active", nowOn);
-  btn.setAttribute("aria-pressed", String(nowOn));
+  const btn = document.querySelector(`#layer-toggles .toggle[data-layer="${layerId}"]`);
+  if (btn) {
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", String(on));
+  }
+}
 
+// Flip one layer, refresh visibility, then reflow what's left.
+function toggleLayer(layerId) {
+  setLayerState(layerId, !visibleLayers.has(layerId));
   applyVisibility();
   updateStatus();
   reflow(); // compact the remaining nodes / restore the prior arrangement
@@ -325,6 +345,96 @@ function centerOnVisible() {
   });
 }
 
+// --- Navigation: mouse wheel pans (Ctrl/Cmd+wheel zooms); arrow keys pan. ---
+function setupNavigation() {
+  const container = document.getElementById("cy");
+
+  // Plain wheel scrolls (pans) the graph; Ctrl/Cmd+wheel zooms toward the cursor.
+  container.addEventListener(
+    "wheel",
+    (ev) => {
+      ev.preventDefault(); // stop the page from scrolling
+      if (ev.ctrlKey || ev.metaKey) {
+        const factor = Math.exp(-ev.deltaY * 0.001); // gentle zoom
+        cy.zoom({
+          level: cy.zoom() * factor,
+          renderedPosition: { x: ev.offsetX, y: ev.offsetY },
+        });
+      } else {
+        // Move the content opposite the scroll direction (natural scrolling).
+        cy.panBy({ x: -ev.deltaX, y: -ev.deltaY });
+      }
+    },
+    { passive: false }
+  );
+
+  // Arrow keys pan. Ignore when typing in the search box.
+  document.addEventListener("keydown", (ev) => {
+    const tag = ev.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    const step = 80;
+    const moves = {
+      ArrowUp: { x: 0, y: step },
+      ArrowDown: { x: 0, y: -step },
+      ArrowLeft: { x: step, y: 0 },
+      ArrowRight: { x: -step, y: 0 },
+    };
+    const move = moves[ev.key];
+    if (!move) return;
+    ev.preventDefault();
+    cy.panBy(move);
+  });
+}
+
+// --- Search: center the matching node; do nothing if nothing matches. ---
+function setupSearch() {
+  const input = document.getElementById("search");
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    const node = findNode(input.value);
+    if (node) revealNode(node); // no match -> do nothing
+  });
+}
+
+// Find a node whose name/alias matches the query (case-insensitive). Prefers an
+// exact match, then falls back to a substring match. Returns the cy node or null.
+function findNode(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+
+  const fieldsOf = (n) =>
+    [n.en, n.zh, ...(n.aliases_en || []), ...(n.aliases_zh || [])].filter(Boolean);
+
+  let hit = kb.nodes.find((n) => fieldsOf(n).some((f) => f.toLowerCase() === q));
+  if (!hit) {
+    hit = kb.nodes.find((n) => fieldsOf(n).some((f) => f.toLowerCase().includes(q)));
+  }
+  return hit ? cy.getElementById(hit.id) : null;
+}
+
+// Make sure a node is visible (turn its layer on if needed), then center + flash it.
+function revealNode(node) {
+  const layerId = node.data("layer");
+  if (!visibleLayers.has(layerId)) {
+    setLayerState(layerId, true);
+    applyVisibility();
+    updateStatus();
+    reflow();
+  }
+  centerNode(node);
+}
+
+// Pan/zoom to a single node and briefly highlight it.
+function centerNode(node) {
+  cy.animate(
+    { center: { eles: node }, zoom: Math.max(cy.zoom(), 1.4) },
+    { duration: 400, easing: "ease-in-out" }
+  );
+  node.addClass("searched");
+  // Remove the highlight after a moment (no persistent selection state to track).
+  setTimeout(() => node.removeClass("searched"), 1600);
+}
+
 // Wire the EN | 中 buttons to switch language.
 function buildLangToggle() {
   document.querySelectorAll("#lang-toggle .lang-btn").forEach((btn) => {
@@ -349,9 +459,10 @@ function applyLanguage() {
   document.body.classList.toggle("lang-en", lang === "en");
   document.documentElement.lang = lang === "zh" ? "zh" : "en";
 
-  // Page title and recenter button label.
+  // Page title, recenter button label, search placeholder.
   document.getElementById("app-title").textContent = t.title;
   document.getElementById("recenter-btn").textContent = t.recenter;
+  document.getElementById("search").placeholder = t.searchPlaceholder;
 
   // Node labels: swap each to the chosen language's stored value.
   cy.batch(() => {
