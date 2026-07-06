@@ -9,20 +9,25 @@
 <body>
   <header>
     <h1>Finance Knowledge Base</h1>
-    <!-- app.js fills this in after loading data/finance_kb.json -->
+    <!-- app.js fills this in: shows the active layer and its counts -->
     <p id="status">Loading data…</p>
   </header>
 
-  <!-- Cytoscape renders the graph into this element -->
-  <div id="cy"></div>
+  <!-- One button per layer. Only the active layer's nodes are shown at a time;
+       app.js builds the buttons from its LAYERS list. -->
+  <nav id="layer-tabs" aria-label="Knowledge base layers"></nav>
 
-  <!-- Cytoscape core + the fcose force layout and its dependencies.
-       Load order matters: layout-base ← cose-base ← cytoscape-fcose, and fcose
-       auto-registers against the global `cytoscape` present at load time. -->
+  <!-- Graph canvas plus an overlaid bucket-color legend. -->
+  <div id="graph-wrap">
+    <!-- Cytoscape renders the graph into this element -->
+    <div id="cy"></div>
+    <!-- app.js fills this so the swatches always match the node colors -->
+    <div id="legend" aria-label="Bucket color legend"></div>
+  </div>
+
+  <!-- Cytoscape core only. We use its built-in `cose` force layout, so no
+       layout extensions are needed. -->
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

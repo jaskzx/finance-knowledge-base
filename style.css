@@ -1,4 +1,4 @@
-/* Page + graph styling. Header on top, graph fills the rest of the viewport. */
+/* Page + graph styling. Stacked top to bottom: header, layer tabs, graph. */
 
 :root {
   color-scheme: light dark; /* respect the OS light/dark preference */
@@ -14,7 +14,7 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   line-height: 1.5;
   display: flex;
-  flex-direction: column; /* header on top, graph fills the remaining height */
+  flex-direction: column; /* header + tabs on top, graph fills the rest */
 }
 
 header {
@@ -38,10 +38,110 @@ header h1 {
   color: #b00020;
 }
 
-/* The Cytoscape canvas fills all remaining height. min-height:0 lets this flex
-   child shrink so it gets a real, non-zero height for the graph to render into. */
-#cy {
+/* Layer tab bar: a wrapping row of buttons, one per layer. */
+#layer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.6rem 1.25rem;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fff;
+}
+
+.tab {
+  display: flex;
+  flex-direction: column; /* English label over Chinese label */
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.4rem;
+  background: #f7f8fa;
+  color: #333;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.tab:hover {
+  background: #eef1f5;
+}
+
+/* The currently shown layer. */
+.tab.active {
+  background: #8a94a6;
+  border-color: #8a94a6;
+  color: #fff;
+}
+
+.tab-en {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.tab-zh {
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+/* Graph wrapper fills the remaining height and anchors the overlaid legend.
+   min-height:0 lets this flex child shrink so it gets a real, non-zero height. */
+#graph-wrap {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* The Cytoscape canvas fills the wrapper. */
+#cy {
+  position: absolute;
+  inset: 0;
   background: #fafafa;
+}
+
+/* Small legend overlaid on the graph, bottom-left. */
+#legend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: 15rem;
+  padding: 0.5rem 0.7rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e0e0e0;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-size: 0.8rem;
+  color: #333;
+}
+
+.legend-title {
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.2rem 0;
+}
+
+/* Swatch mirrors a node: same fill, same thin ring. */
+.legend-swatch {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.legend-key {
+  width: 1rem;
+  font-weight: 700;
+}
+
+.legend-meaning {
+  color: #444;
 }
