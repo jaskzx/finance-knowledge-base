@@ -39,10 +39,25 @@
        are both on. app.js builds these. -->
   <nav id="bucket-toggles" aria-label="Show or hide buckets"></nav>
 
-  <!-- Graph canvas plus overlays (recenter button, hover tooltip, detail panel). -->
+  <!-- Graph canvas plus overlays (term index, recenter button, tooltip, panel). -->
   <div id="graph-wrap">
     <!-- Cytoscape renders the graph into this element -->
     <div id="cy"></div>
+
+    <!-- Collapsible left index: the currently-visible terms, grouped by layer
+         then subgroup and sorted. Clicking a term centers its node. app.js
+         builds and refreshes the body; the whole panel and each layer section
+         collapse independently. -->
+    <aside id="term-index" class="term-index" aria-label="Term index">
+      <div class="term-index-head">
+        <span class="term-index-title"></span>
+        <button id="term-index-toggle" class="term-index-toggle" type="button"></button>
+      </div>
+      <div id="term-index-body" class="term-index-body"></div>
+    </aside>
+    <!-- Shown only when the index is collapsed; reopens it. -->
+    <button id="term-index-open" class="term-index-open" type="button" hidden></button>
+
     <!-- Recenters/fits the visible nodes; app.js sets its label per language -->
     <button id="recenter-btn" type="button">Recenter</button>
 

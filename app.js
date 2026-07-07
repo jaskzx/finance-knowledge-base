@@ -44,6 +44,12 @@ const UI_TEXT = {
     recenter: "Recenter",
     spotlight: "Divergence spotlight",
     searchPlaceholder: "Search a term…",
+    index: {
+      title: "Terms",
+      open: "☰ Terms",
+      collapse: "Collapse term list",
+      empty: "No terms shown.",
+    },
     panel: {
       subgroup: "Subgroup",
       bucket: "Bucket",
@@ -67,6 +73,12 @@ const UI_TEXT = {
     recenter: "重新居中",
     spotlight: "差异聚焦",
     searchPlaceholder: "搜索术语…",
+    index: {
+      title: "术语",
+      open: "☰ 术语",
+      collapse: "收起术语列表",
+      empty: "暂无术语",
+    },
     panel: {
       subgroup: "子类",
       bucket: "分类",
@@ -121,6 +133,8 @@ const posCache = new Map();
 let openNodeId = null; // id of the node whose detail panel is open, or null
 let panelNuanceLang = "en"; // which language the panel's nuance note shows
 let spotlightOn = false; // divergence spotlight: dim all but bucket C
+let indexCollapsed = false; // left term index collapsed to its reopen button?
+const collapsedLayers = new Set(); // layer ids whose index section is collapsed
 
 // Read the remembered language for this session; default to English. Wrapped
 // because sessionStorage can throw when storage is blocked.
@@ -168,6 +182,7 @@ async function main() {
   buildBucketToggles();
   buildLangToggle();
   setupSearch();
+  setupTermIndex(); // left index: collapse controls + click-to-center
   setupNavigation(); // wheel-to-pan / Ctrl+wheel zoom / arrow keys
   setupInteractions(); // hover tooltip + click/tap detail panel
   // Recenter button: fit the visible nodes back into view (no re-layout).
@@ -216,10 +231,17 @@ function createGraph() {
       // Bucket color overrides (more specific, so they win over the base rule).
       ...bucketStyles,
       {
-        // Transient highlight for a searched node (amber ring — outside the
-        // bucket palette, so it can't be misread as a bucket).
+        // Transient highlight for a searched node: a white ring edged in black
+        // via an outline, so it reads on any bucket color (amber B was hard to
+        // see with the old yellow ring) as well as the light canvas.
         selector: "node.searched",
-        style: { "border-color": "#f5a623", "border-width": 4 },
+        style: {
+          "border-color": "#fff",
+          "border-width": 4, // same ring thickness as before
+          "outline-color": "#000",
+          "outline-width": 2,
+          "outline-offset": 0,
+        },
       },
       {
         // Divergence spotlight: everything but bucket C fades back.
@@ -409,6 +431,7 @@ function toggleLayer(layerId) {
   setLayerState(layerId, !visibleLayers.has(layerId));
   applyVisibility();
   updateStatus();
+  buildTermIndex(); // the left index tracks what's visible
   reflow(); // compact the remaining nodes / restore the prior arrangement
 }
 
@@ -451,6 +474,7 @@ function toggleBucket(b) {
   refreshBucketLabels();
   applyVisibility();
   updateStatus();
+  buildTermIndex(); // the left index tracks what's visible
   reflow();
 }
 
@@ -586,6 +610,7 @@ function revealNode(node) {
     setLayerState(layerId, true);
     applyVisibility();
     updateStatus();
+    buildTermIndex(); // revealing a hidden layer adds its terms to the index
     reflow();
   }
   centerNode(node);
@@ -789,6 +814,114 @@ function renderPanel() {
   document.getElementById("detail-panel").innerHTML = html;
 }
 
+// --- Left term index: a collapsible list of the currently-visible terms,
+//     grouped by layer then subgroup and sorted, each entry centering its node. ---
+
+// Wire the collapse controls and the delegated clicks (section headers collapse
+// a layer; term rows center the node). The body is (re)built by buildTermIndex.
+function setupTermIndex() {
+  document
+    .getElementById("term-index-toggle")
+    .addEventListener("click", () => setIndexCollapsed(true));
+  document
+    .getElementById("term-index-open")
+    .addEventListener("click", () => setIndexCollapsed(false));
+
+  document.getElementById("term-index-body").addEventListener("click", (ev) => {
+    // Layer header: collapse/expand just that layer's section.
+    const head = ev.target.closest(".ti-layer-head");
+    if (head) {
+      const section = head.closest(".ti-layer");
+      const layerId = section.dataset.layer;
+      const nowCollapsed = !collapsedLayers.has(layerId);
+      if (nowCollapsed) collapsedLayers.add(layerId);
+      else collapsedLayers.delete(layerId);
+      section.classList.toggle("collapsed", nowCollapsed);
+      head.setAttribute("aria-expanded", String(!nowCollapsed));
+      return;
+    }
+    // Term row: center (and flash) its node — "leads to" the node on the graph.
+    const term = ev.target.closest(".ti-term");
+    if (term) {
+      const node = cy.getElementById(term.dataset.id);
+      if (node.nonempty()) centerNode(node);
+    }
+  });
+
+  // On a phone the index would cover most of the graph, so start it collapsed.
+  if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) {
+    setIndexCollapsed(true);
+  }
+}
+
+// Show/hide the whole index panel (and swap in its floating reopen button).
+function setIndexCollapsed(collapsed) {
+  indexCollapsed = collapsed;
+  document.getElementById("term-index").hidden = collapsed;
+  document.getElementById("term-index-open").hidden = !collapsed;
+}
+
+// Index chrome that depends on language: the title and the reopen button label.
+function refreshIndexChrome() {
+  const t = UI_TEXT[lang].index;
+  document.querySelector(".term-index-title").textContent = t.title;
+  const toggle = document.getElementById("term-index-toggle");
+  toggle.textContent = "«"; // collapse chevron (points at the panel edge)
+  toggle.setAttribute("aria-label", t.collapse);
+  document.getElementById("term-index-open").textContent = t.open;
+}
+
+// Rebuild the index body from the current visible-state, in the current language.
+function buildTermIndex() {
+  const body = document.getElementById("term-index-body");
+  const visibleNodes = kb.nodes.filter((n) => isNodeVisible(n));
+  const label = (n) => (lang === "zh" ? n.zh : n.en);
+  const collator = lang === "zh" ? "zh" : "en";
+
+  let html = "";
+  LAYERS.forEach((layer) => {
+    const inLayer = visibleNodes.filter((n) => n.layer === layer.id);
+    if (!inLayer.length) return; // skip layers with nothing visible right now
+
+    const collapsed = collapsedLayers.has(layer.id);
+    const name = lang === "zh" ? layer.zh : layer.en;
+
+    html +=
+      `<section class="ti-layer${collapsed ? " collapsed" : ""}" data-layer="${esc(layer.id)}">` +
+      `<button class="ti-layer-head" type="button" aria-expanded="${String(!collapsed)}">` +
+      `<span class="ti-caret" aria-hidden="true">▾</span>` +
+      `<span class="ti-layer-name">${esc(name)}</span>` +
+      `<span class="ti-count">${inLayer.length}</span></button>` +
+      `<div class="ti-layer-body">`;
+
+    // Subgroups in the order they first appear in the data for this layer, so the
+    // headings match the graph's conceptual grouping.
+    const subOrder = [];
+    inLayer.forEach((n) => {
+      const s = n.subgroup || "";
+      if (!subOrder.includes(s)) subOrder.push(s);
+    });
+
+    subOrder.forEach((sub) => {
+      if (sub) html += `<div class="ti-sub">${esc(humanizeSubgroup(sub))}</div>`;
+      inLayer
+        .filter((n) => (n.subgroup || "") === sub)
+        .sort((a, b) => label(a).localeCompare(label(b), collator))
+        .forEach((n) => {
+          html +=
+            `<button class="ti-term" type="button" data-id="${esc(n.id)}">` +
+            `<span class="ti-dot" style="background:${
+              BUCKET_COLORS[n.bucket] || "#8a94a6"
+            }"></span>${esc(label(n))}</button>`;
+        });
+    });
+
+    html += `</div></section>`;
+  });
+
+  body.innerHTML = html || `<p class="ti-empty">${esc(UI_TEXT[lang].index.empty)}</p>`;
+}
+
 // Wire the EN | 中 buttons to switch language.
 function buildLangToggle() {
   document.querySelectorAll("#lang-toggle .lang-btn").forEach((btn) => {
@@ -834,6 +967,8 @@ function applyLanguage() {
 
   refreshBucketLabels(); // bucket toggle meanings are language-dependent
   updateStatus(); // status sentence is language-dependent
+  refreshIndexChrome(); // index title + reopen button are language-dependent
+  buildTermIndex(); // labels + sort order are language-dependent
 
   if (openNodeId) {
     panelNuanceLang = lang; // the open panel follows the current UI language
